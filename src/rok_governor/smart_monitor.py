@@ -310,7 +310,8 @@ def run_smart_monitor(
                                 except Exception as capture_exc:
                                     execution_store.finish(
                                         execution_command, "posted",
-                                        {"input_results": sent, "verification_status": "capture_failed",
+                                        {"input_results": sent, "verification_criteria": proposed.get("verification"),
+                                         "verification_status": "capture_failed",
                                          "capture_error": str(capture_exc)},
                                     )
                                     print(
