@@ -337,10 +337,20 @@ def run_resilient_monitor(
         except Exception as exc:
             failures += 1
             delay = min(max_retry_delay, retry_delay * (2 ** min(failures - 1, 10)))
+            previous_health_path = Path(database).with_name("runtime_status.json")
+            try:
+                previous_health = json.loads(previous_health_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                previous_health = {}
             _write_runtime_status(
                 database, state="restarting", title=title,
+                started_at=previous_health.get("started_at"),
+                last_capture_at=previous_health.get("last_capture_at"),
+                last_ocr_at=previous_health.get("last_ocr_at"),
+                last_gemini_at=previous_health.get("last_gemini_at"),
                 last_error=f"Monitor {type(exc).__name__}: {exc}",
                 consecutive_failures=failures,
+                observation_count=previous_health.get("observations_this_session", 0),
             )
             print(
                 f"Monitor cycle failed ({type(exc).__name__}: {exc}). "
