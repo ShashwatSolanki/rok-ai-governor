@@ -58,7 +58,17 @@ def _to_quantity(token: str) -> int | None:
     match = re.fullmatch(r"(\d+(?:[.,]\d+)?)([KMB]?)", token, re.IGNORECASE)
     if not match:
         return None
-    number = float(match.group(1).replace(",", "."))
+    number_text = match.group(1)
+    if "," in number_text and "." in number_text:
+        # Conventional thousands separators plus decimal point: 1,234.5
+        number_text = number_text.replace(",", "")
+    elif re.fullmatch(r"\\d{1,3}(,\\d{3})+", number_text):
+        # Grouped integer: 3,425 must mean three thousand four hundred twenty-five.
+        number_text = number_text.replace(",", "")
+    else:
+        # Decimal comma, if present: 956,1K.
+        number_text = number_text.replace(",", ".")
+    number = float(number_text)
     multiplier = {"": 1, "K": 1_000, "M": 1_000_000, "B": 1_000_000_000}
     return int(round(number * multiplier[match.group(2).upper()]))
 
