@@ -294,6 +294,11 @@ def main() -> int:
         print(f"Last OCR success: {health.get('last_ocr_at') or 'never'}")
         print(f"Last Gemini success: {health.get('last_gemini_at') or 'never'}")
         print(f"Observations this session: {health.get('observations_this_session', 0)}")
+        from .task_store import TaskStore
+
+        task_store = TaskStore(args.database)
+        print(f"Pending recommendations: {len(task_store.list('pending'))}")
+        print(f"Completed recommendations: {len(task_store.list('completed'))}")
         print(f"Consecutive failures: {health.get('consecutive_failures', 0)}")
         if health.get("last_error"):
             print(f"Last error: {health['last_error']}")
