@@ -179,3 +179,77 @@ def run_smart_monitor(
         flush=True,
     )
     return observation_number
+
+
+
+def run_resilient_monitor(
+    *,
+    title: str = "万国覚醒",
+    sample_interval: float = 2.0,
+    change_threshold: float = 0.025,
+    stable_frames: int = 2,
+    heartbeat: float = 30.0,
+    duration: int = 0,
+    profile: str = "pc",
+    database: str = "data/account_history.sqlite3",
+    screenshot_dir: str = "screenshots",
+    output_dir: str = "observations",
+    gemini_interval: float = 180.0,
+    gemini_model: str | None = None,
+    retry_delay: float = 5.0,
+    max_retry_delay: float = 60.0,
+) -> int:
+    """Run Gemini-powered, read-only monitoring and recover from transient failures.
+
+    The supervisor restarts a failed monitoring cycle with exponential backoff.
+    It never sends input to the game. A finite duration applies to the whole run,
+    not to each restart.
+    """
+    if retry_delay <= 0 or max_retry_delay < retry_delay:
+        raise ValueError("Retry delays must be positive and max_retry_delay >= retry_delay.")
+    started = time.monotonic()
+    failures = 0
+    print(
+        "RoK Governor supervisor started. Gemini strategy is enabled; "
+        "game interaction is disabled. Press Ctrl+C to stop.",
+        flush=True,
+    )
+    while True:
+        remaining = max(0, duration - int(time.monotonic() - started)) if duration else 0
+        if duration and remaining <= 0:
+            print("Configured run duration reached.", flush=True)
+            return 0
+        try:
+            run_smart_monitor(
+                title=title,
+                sample_interval=sample_interval,
+                change_threshold=change_threshold,
+                stable_frames=stable_frames,
+                heartbeat=heartbeat,
+                duration=remaining,
+                profile=profile,
+                database=database,
+                screenshot_dir=screenshot_dir,
+                output_dir=output_dir,
+                gemini_enabled=True,
+                gemini_interval=gemini_interval,
+                gemini_model=gemini_model,
+            )
+            return 0
+        except KeyboardInterrupt:
+            print("\\nGovernor stopped by user.", flush=True)
+            return 0
+        except Exception as exc:
+            failures += 1
+            delay = min(max_retry_delay, retry_delay * (2 ** min(failures - 1, 10)))
+            print(
+                f"Monitor cycle failed ({type(exc).__name__}: {exc}). "
+                f"Restarting in {delay:g}s (consecutive failures: {failures}).",
+                flush=True,
+            )
+            if duration:
+                elapsed = time.monotonic() - started
+                if elapsed + delay >= duration:
+                    print("Run duration expires before the next retry.", flush=True)
+                    return 1
+            time.sleep(delay)
