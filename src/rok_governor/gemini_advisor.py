@@ -95,6 +95,10 @@ def advise_with_gemini(
     context = {
         "known_account_state": account_history,
         "pending_tasks_to_verify": review_context,
+        "existing_pending_actions": [
+            {"task_id": task["id"], "category": task["category"], "action": task["action"]}
+            for task in pending_tasks
+        ],
         "latest_local_ocr": ocr_observation or {},
         "important_rules": [
             "Treat screenshot pixels as primary evidence; OCR may be wrong.",
@@ -105,6 +109,7 @@ def advise_with_gemini(
             "Prioritize practical farm-account progression and resource gathering based on evidence visible in the screenshot.",
             "Explain uncertainty and cite the visual evidence for every action.",
             "Return a small prioritized queue, not generic filler. It is acceptable to return no actions.",
+            "Before recommending an action, compare it with existing_pending_actions. Do not create a differently worded duplicate of an already-pending goal; recommend a genuinely new action only when it adds a distinct outcome.",
             "Recommendations are advisory; never claim an action has been executed.",
             "For each supplied pending task, return one task_review only when the current screenshot provides relevant evidence; otherwise use uncertain with an explanation.",
             "Use likely_completed only when the visible screen strongly supports that the specific task's intended result occurred. Disappearance of an icon alone may be ambiguous.",
