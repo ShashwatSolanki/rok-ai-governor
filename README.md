@@ -71,7 +71,7 @@ python -m rok_governor analyze screenshots\city.png --gemini
 Override the Gemini model if needed:
 
 ```powershell
-python -m rok_governor analyze screenshots\city.png --gemini --gemini-model gemini-3.8-flash
+python -m rok_governor analyze screenshots\city.png --gemini --gemini-model gemini-3.6-flash
 ```
 
 Capture the primary monitor instead:
@@ -94,7 +94,7 @@ Start the resilient background monitor for the official PC client:
 python -m rok_governor run --title "万国覚醒"
 ```
 
-The `run` command enables Gemini strategy reviews automatically, samples the game window every two seconds, runs OCR after meaningful visual changes or on the heartbeat, and syncs recommendations and visual task reviews to the local SQLite database. Gemini runs on its own schedule (default: every 180 seconds), independently of OCR; a local OCR failure does not block Gemini from interpreting the current screenshot. Gemini API failures use a separate exponential retry schedule, while capture or other monitor failures are recovered by the supervisor (5, 10, 20, 40, then at most 60 seconds). Unchanged diagnostic screenshots are discarded to prevent unbounded disk growth. Use `Ctrl+C` to stop.
+The `run` command enables Gemini strategy reviews automatically, samples the game window every two seconds, runs OCR after meaningful visual changes or on the heartbeat, and syncs recommendations and visual task reviews to the local SQLite database. Gemini runs on its own schedule (default: every 180 seconds), independently of OCR; a local OCR failure does not block Gemini from interpreting the current screenshot. Gemini API failures use a separate exponential retry schedule, while capture or other monitor failures are recovered by the supervisor (5, 10, 20, 40, then at most 60 seconds). Unchanged diagnostic screenshots are discarded, and the screenshot folder is capped at the newest 200 retained captures. Use `Ctrl+C` to stop.
 
 Useful overrides:
 
@@ -115,6 +115,10 @@ src/rok_governor/
   window_capture.py
   ocr.py
   gemini_vision.py
+  gemini_advisor.py
+  account_store.py
+  task_store.py
+  smart_monitor.py
   cli.py
 screenshots/       # local captures (git-ignored)
 observations/      # local JSON output (git-ignored)
