@@ -76,7 +76,7 @@ def run_smart_monitor(
     print(
         f"Smart monitoring '{title}' every {sample_interval:g}s; "
         f"OCR on change (>{change_threshold:.1%}) or every {heartbeat:g}s. "
-        ("Gemini strategy enabled; " if gemini_enabled else "")
+        + ("Gemini strategy enabled; " if gemini_enabled else "")
         + "Read-only; Ctrl+C to stop.",
         flush=True,
     )
