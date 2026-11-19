@@ -119,6 +119,13 @@ def build_parser() -> argparse.ArgumentParser:
         "status", help="Show the latest known account fields from the local history database."
     )
     status_parser.add_argument("--database", default="data/account_history.sqlite3")
+    tasks_parser = subparsers.add_parser("tasks", help="List persistent Gemini recommendations.")
+    tasks_parser.add_argument("--database", default="data/account_history.sqlite3")
+    tasks_parser.add_argument("--status", choices=("pending", "completed", "dismissed", "all"), default="pending")
+    done_parser = subparsers.add_parser("task-done", help="Update a task after manual review.")
+    done_parser.add_argument("task_id", type=int)
+    done_parser.add_argument("--status", choices=("completed", "dismissed", "pending"), default="completed")
+    done_parser.add_argument("--database", default="data/account_history.sqlite3")
     return parser
 
 
@@ -183,8 +190,12 @@ def main() -> int:
             )
             return 1
         output = save_advice(result, args.output)
+        from .task_store import TaskStore
+
+        new_tasks = TaskStore(args.database).ingest(result)
         print(json.dumps(result, indent=2, ensure_ascii=False))
         print(f"\\nGemini advice saved: {output}")
+        print(f"Governor task queue updated: {new_tasks} new task(s).")
         return 0
 
     if args.command == "plan":
@@ -194,6 +205,32 @@ def main() -> int:
         output = save_farm_plan(plan, args.output)
         print(json.dumps(plan, indent=2, ensure_ascii=False))
         print(f"\\nFarm plan saved: {output}")
+        return 0
+
+    if args.command == "tasks":
+        from .task_store import TaskStore
+
+        tasks = TaskStore(args.database).list(args.status)
+        if not tasks:
+            print(f"No {args.status} governor tasks.")
+            return 0
+        for task in tasks:
+            print(f"#{task['id']} [{task['status'].upper()}] [{task['priority'].upper()}] {task['action']}")
+            print(f"   Category: {task['category']} | Seen: {task['seen_count']} time(s)")
+            if task["why"]:
+                print(f"   Why: {task['why']}")
+            for step in task["manual_steps"]:
+                print(f"   - {step}")
+        return 0
+
+    if args.command == "task-done":
+        from .task_store import TaskStore
+
+        changed = TaskStore(args.database).set_status(args.task_id, args.status)
+        if not changed:
+            print(f"Task #{args.task_id} was not found.")
+            return 1
+        print(f"Task #{args.task_id} marked {args.status}.")
         return 0
 
     if args.command == "status":
