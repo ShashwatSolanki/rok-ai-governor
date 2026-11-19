@@ -95,9 +95,10 @@ def build_parser() -> argparse.ArgumentParser:
     smart_parser.add_argument("--gemini-interval", type=float, default=180.0,
                               help="Minimum seconds between Gemini strategy requests.")
     smart_parser.add_argument("--gemini-model", default=None)
+    smart_parser.add_argument("--observe-only", action="store_true", help="Disable all game input; monitor and advise only.")
 
     run_parser = subparsers.add_parser(
-        "run", help="Run resilient Gemini-powered background monitoring (read-only)."
+        "run", help="Run the resilient Gemini-powered background governor."
     )
     run_parser.add_argument("--title", default="万国覚醒")
     run_parser.add_argument("--sample-interval", type=float, default=2.0)
@@ -114,6 +115,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--gemini-model", default=None)
     run_parser.add_argument("--retry-delay", type=float, default=5.0)
     run_parser.add_argument("--max-retry-delay", type=float, default=60.0)
+    run_parser.add_argument("--observe-only", action="store_true", help="Disable all game input; monitor and advise only.")
 
     advise_parser = subparsers.add_parser(
         "advise", help="Capture the current game screen and ask Gemini what to do next."
@@ -432,6 +434,7 @@ def main() -> int:
             gemini_enabled=args.gemini,
             gemini_interval=args.gemini_interval,
             gemini_model=args.gemini_model,
+            automation_enabled=not args.observe_only,
         )
         return 0
 
@@ -453,6 +456,7 @@ def main() -> int:
             gemini_model=args.gemini_model,
             retry_delay=args.retry_delay,
             max_retry_delay=args.max_retry_delay,
+            automation_enabled=not args.observe_only,
         )
 
     if args.command == "analyze":
