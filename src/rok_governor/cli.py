@@ -90,6 +90,12 @@ def build_parser() -> argparse.ArgumentParser:
     smart_parser.add_argument("--screenshot-dir", default="screenshots")
     smart_parser.add_argument("--output-dir", default="observations")
 
+    plan_parser = subparsers.add_parser(
+        "plan", help="Generate a prioritized farm plan from the latest account state."
+    )
+    plan_parser.add_argument("--database", default="data/account_history.sqlite3")
+    plan_parser.add_argument("--output", default="data/latest_farm_plan.json")
+
     status_parser = subparsers.add_parser(
         "status", help="Show the latest known account fields from the local history database."
     )
@@ -122,6 +128,15 @@ def main() -> int:
 
         output = capture_window(args.title, args.output_dir)
         print(f"Window screenshot saved: {output}")
+        return 0
+
+    if args.command == "plan":
+        from .decision_engine import build_farm_plan, save_farm_plan
+
+        plan = build_farm_plan(database=args.database)
+        output = save_farm_plan(plan, args.output)
+        print(json.dumps(plan, indent=2, ensure_ascii=False))
+        print(f"\\nFarm plan saved: {output}")
         return 0
 
     if args.command == "status":
