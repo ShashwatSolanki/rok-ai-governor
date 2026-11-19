@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rok-ai-governor"
+version = "0.1.0"
+description = "Read-only screenshot analysis companion for Rise of Kingdoms"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "mss>=9.0.1",
+  "opencv-python>=4.9.0",
+  "numpy>=1.26.0",
+  "Pillow>=10.0.0",
+  "easyocr>=1.7.1",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
