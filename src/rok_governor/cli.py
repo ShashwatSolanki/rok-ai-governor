@@ -104,6 +104,10 @@ def build_parser() -> argparse.ArgumentParser:
     advise_parser.add_argument("--screenshot-dir", default="screenshots")
     advise_parser.add_argument("--output", default="data/latest_gemini_advice.json")
     advise_parser.add_argument("--model", default=None)
+    advise_parser.add_argument(
+        "--fast", action="store_true",
+        help="Skip local EasyOCR and let Gemini interpret the screenshot directly.",
+    )
 
     plan_parser = subparsers.add_parser(
         "plan", help="Generate a prioritized farm plan from the latest account state."
@@ -152,11 +156,14 @@ def main() -> int:
         print("Capturing current RoK window...", flush=True)
         screenshot = capture_window(args.title, args.screenshot_dir)
         local_observation = None
-        try:
-            print("Running local OCR as supporting evidence...", flush=True)
-            local_observation = analyse_image(screenshot, profile=args.profile)
-        except Exception as exc:
-            print(f"Local OCR unavailable ({type(exc).__name__}: {exc}); asking Gemini to inspect pixels directly.", flush=True)
+        if args.fast:
+            print("Fast mode: skipping local EasyOCR; Gemini will inspect the screenshot directly.", flush=True)
+        else:
+            try:
+                print("Running local OCR as supporting evidence...", flush=True)
+                local_observation = analyse_image(screenshot, profile=args.profile)
+            except Exception as exc:
+                print(f"Local OCR unavailable ({type(exc).__name__}: {exc}); asking Gemini to inspect pixels directly.", flush=True)
         print("Asking Gemini to assess the account and recommend next actions...", flush=True)
         try:
             result = advise_with_gemini(
