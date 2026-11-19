@@ -98,6 +98,7 @@ def run_smart_monitor(
     gemini_enabled: bool = False,
     gemini_interval: float = 180.0,
     gemini_model: str | None = None,
+    automation_enabled: bool = True,
 ) -> int:
     """Observe the game continuously; OCR is supporting evidence, Gemini is independent.
 
@@ -229,12 +230,12 @@ def run_smart_monitor(
                         commands_saved = CommandStore(database).ingest(advice)
 
                         # Execute at most one idempotent, low-risk click command per
-                        # Gemini cycle. All other proposals remain in the command queue.
+                        # Gemini cycle when unattended input is enabled. All other proposals remain queued.
                         from .execution_store import ExecutionStore
                         from .input_controller import execute_safe_actions, WindowInputError
 
                         execution_store = ExecutionStore(database)
-                        for proposed in (advice.get("advice") or {}).get("commands") or []:
+                        for proposed in ((advice.get("advice") or {}).get("commands") or []) if automation_enabled else []:
                             if not proposed.get("input_actions"):
                                 continue
                             if not proposed.get("preconditions") or not proposed.get("verification"):
@@ -338,6 +339,7 @@ def run_resilient_monitor(
     gemini_model: str | None = None,
     retry_delay: float = 5.0,
     max_retry_delay: float = 60.0,
+    automation_enabled: bool = True,
 ) -> int:
     """Run Gemini-powered, read-only monitoring and recover from transient failures.
 
@@ -379,6 +381,7 @@ def run_resilient_monitor(
                 gemini_enabled=True,
                 gemini_interval=gemini_interval,
                 gemini_model=gemini_model,
+                automation_enabled=automation_enabled,
             )
             return 0
         except KeyboardInterrupt:
