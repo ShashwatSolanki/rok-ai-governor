@@ -17,6 +17,7 @@ from google import genai
 from google.genai import types
 
 from .account_store import AccountStore
+from .task_store import TaskStore
 from .gemini_vision import DEFAULT_MODEL
 
 ADVICE_SCHEMA = {
@@ -42,10 +43,23 @@ ADVICE_SCHEMA = {
                 "required": ["priority", "action", "category", "why", "visual_evidence", "confidence", "uncertainties", "manual_steps"],
             },
         },
+        "task_reviews": {
+            "type": "ARRAY",
+            "items": {
+                "type": "OBJECT",
+                "properties": {
+                    "task_id": {"type": "INTEGER"},
+                    "assessment": {"type": "STRING", "enum": ["likely_completed", "still_pending", "uncertain"]},
+                    "visual_evidence": {"type": "STRING"},
+                    "confidence": {"type": "NUMBER"},
+                },
+                "required": ["task_id", "assessment", "visual_evidence", "confidence"],
+            },
+        },
         "what_to_inspect_next": {"type": "ARRAY", "items": {"type": "STRING"}},
         "do_not_assume": {"type": "ARRAY", "items": {"type": "STRING"}},
     },
-    "required": ["account_summary", "current_screen", "overall_assessment", "recommended_actions", "what_to_inspect_next", "do_not_assume"],
+    "required": ["account_summary", "current_screen", "overall_assessment", "recommended_actions", "task_reviews", "what_to_inspect_next", "do_not_assume"],
 }
 
 
@@ -67,8 +81,20 @@ def advise_with_gemini(
         raise FileNotFoundError(path)
 
     account_history = AccountStore(database).latest_state()
+    pending_tasks = TaskStore(database).list("pending")
+    review_context = [
+        {
+            "task_id": task["id"],
+            "action": task["action"],
+            "visual_evidence_when_created": task["visual_evidence"],
+            "manual_steps": task["manual_steps"],
+            "last_seen": task["last_seen"],
+        }
+        for task in pending_tasks
+    ]
     context = {
         "known_account_state": account_history,
+        "pending_tasks_to_verify": review_context,
         "latest_local_ocr": ocr_observation or {},
         "important_rules": [
             "Treat screenshot pixels as primary evidence; OCR may be wrong.",
@@ -80,11 +106,16 @@ def advise_with_gemini(
             "Explain uncertainty and cite the visual evidence for every action.",
             "Return a small prioritized queue, not generic filler. It is acceptable to return no actions.",
             "Recommendations are advisory; never claim an action has been executed.",
+            "For each supplied pending task, return one task_review only when the current screenshot provides relevant evidence; otherwise use uncertain with an explanation.",
+            "Use likely_completed only when the visible screen strongly supports that the specific task's intended result occurred. Disappearance of an icon alone may be ambiguous.",
+            "Never treat a task as completed merely because it is old or not visible on this screen. Use still_pending only when the screenshot visibly shows the task remains undone.",
+            "Task reviews are suggestions for human confirmation, not status changes. Do not invent task IDs.",
         ],
     }
     prompt = (
         "You are the strategic farm-account governor for Rise of Kingdoms. "
         "Study the attached current game screenshot and the supplied account context. "
+        "Also compare visible evidence with pending tasks and return cautious task_reviews. "
         "You, Gemini, must reason about what the player should do next. Do not apply "
         "fixed reserve thresholds or hard-coded priorities. Make context-sensitive "
         "decisions from the visible game state, account progression, and stated farm "
