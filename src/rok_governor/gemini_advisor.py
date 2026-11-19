@@ -43,6 +43,25 @@ ADVICE_SCHEMA = {
                 "required": ["priority", "action", "category", "why", "visual_evidence", "confidence", "uncertainties", "manual_steps"],
             },
         },
+        "commands": {
+            "type": "ARRAY",
+            "items": {
+                "type": "OBJECT",
+                "properties": {
+                    "action_type": {"type": "STRING", "enum": ["inspect_screen", "open_menu", "select_tab", "start_gathering", "start_research", "upgrade_building", "train_troops", "claim_reward", "manage_commander", "other"]},
+                    "title": {"type": "STRING"},
+                    "target": {"type": "STRING"},
+                    "parameters": {"type": "OBJECT"},
+                    "preconditions": {"type": "ARRAY", "items": {"type": "STRING"}},
+                    "steps": {"type": "ARRAY", "items": {"type": "STRING"}},
+                    "verification": {"type": "STRING"},
+                    "rationale": {"type": "STRING"},
+                    "risk": {"type": "STRING", "enum": ["low", "medium", "high", "unknown"]},
+                    "confidence": {"type": "NUMBER"}
+                },
+                "required": ["action_type", "title", "target", "parameters", "preconditions", "steps", "verification", "rationale", "risk", "confidence"]
+            }
+        },
         "task_reviews": {
             "type": "ARRAY",
             "items": {
@@ -59,7 +78,7 @@ ADVICE_SCHEMA = {
         "what_to_inspect_next": {"type": "ARRAY", "items": {"type": "STRING"}},
         "do_not_assume": {"type": "ARRAY", "items": {"type": "STRING"}},
     },
-    "required": ["account_summary", "current_screen", "overall_assessment", "recommended_actions", "task_reviews", "what_to_inspect_next", "do_not_assume"],
+    "required": ["account_summary", "current_screen", "overall_assessment", "recommended_actions", "commands", "task_reviews", "what_to_inspect_next", "do_not_assume"],
 }
 
 
@@ -117,7 +136,11 @@ def advise_with_gemini(
             "Explain uncertainty and cite the visual evidence for every action.",
             "Return a small prioritized queue, not generic filler. It is acceptable to return no actions.",
             "Before recommending an action, compare it with existing_pending_actions and recent_task_history. Do not create a differently worded duplicate of an already-pending goal. Do not repeat completed or dismissed goals unless current screenshot evidence shows a genuinely new instance or changed need; explain why it is new.",
-            "Recommendations are advisory; never claim an action has been executed.",
+            "Recommendations and commands are proposals only; never claim an action has been executed.",
+            "For each recommended action that can be expressed as a concrete in-game operation, also emit a structured command. Commands must be declarative data, never code, shell commands, macros, coordinates, or key sequences.",
+            "Each command must state exact visible target, preconditions, ordered player-performed steps, a way to verify the result, rationale, risk, and confidence. If target or prerequisites are not visible, emit inspect_screen instead of guessing.",
+            "Do not include commands to spend gems, buy bundles, use rare items, or make irreversible account changes. For those, explain the decision in advice only and mark that human judgment is required.",
+            "Commands are for the human player to perform. The governor does not click, type, tap, or otherwise execute them.",
             "For each supplied pending task, return one task_review only when the current screenshot provides relevant evidence; otherwise use uncertain with an explanation.",
             "Use likely_completed only when the visible screen strongly supports that the specific task's intended result occurred. Disappearance of an icon alone may be ambiguous.",
             "Never treat a task as completed merely because it is old or not visible on this screen. Use still_pending only when the screenshot visibly shows the task remains undone.",
