@@ -22,6 +22,21 @@ def build_parser() -> argparse.ArgumentParser:
         "--output-dir", default="screenshots", help="Directory for PNG captures."
     )
 
+    window_parser = subparsers.add_parser(
+        "capture-window", help="Capture a specific Windows application window."
+    )
+    window_parser.add_argument(
+        "--title", default="BlueStacks",
+        help="Case-insensitive substring of the window title (default: BlueStacks).",
+    )
+    window_parser.add_argument(
+        "--output-dir", default="screenshots", help="Directory for PNG captures."
+    )
+
+    subparsers.add_parser(
+        "windows", help="List visible top-level Windows application windows."
+    )
+
     analyse_parser = subparsers.add_parser(
         "analyze", help="Run OCR on an existing screenshot."
     )
@@ -38,6 +53,25 @@ def main() -> int:
     if args.command == "capture":
         output = capture_primary_monitor(args.output_dir)
         print(f"Screenshot saved: {output}")
+        return 0
+
+    if args.command == "windows":
+        from .window_capture import find_windows
+
+        windows = find_windows()
+        if not windows:
+            print("No visible titled windows found.")
+            return 0
+        for item in windows:
+            state = "minimised" if item["minimized"] else "not minimised"
+            print(f'{item["title"]} | {state} | hwnd={item["hwnd"]}')
+        return 0
+
+    if args.command == "capture-window":
+        from .window_capture import capture_window
+
+        output = capture_window(args.title, args.output_dir)
+        print(f"Window screenshot saved: {output}")
         return 0
 
     if args.command == "analyze":
