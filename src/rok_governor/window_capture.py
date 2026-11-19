@@ -161,7 +161,7 @@ def capture_window(
 
         destination = Path(output_dir)
         destination.mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         output_path = destination / f"window_{timestamp}.png"
         image.save(output_path, format="PNG")
         return output_path
