@@ -35,6 +35,7 @@ class ExecutionStore:
                 "title": command.get("title"),
                 "target": command.get("target"),
                 "input_actions": command.get("input_actions"),
+                "screen_fingerprint": command.get("screen_fingerprint"),
             },
             ensure_ascii=False,
             sort_keys=True,
