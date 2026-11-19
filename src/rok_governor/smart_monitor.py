@@ -338,7 +338,7 @@ def run_smart_monitor(
                         )
                         next_gemini_at = time.monotonic() + delay
                         runtime_error = f"Gemini {type(exc).__name__}: {exc}"
-                        _write_runtime_status(database, state="degraded", title=title, started_at=session_started_at, last_capture_at=last_capture_at, last_ocr_at=last_ocr_at, last_gemini_at=last_gemini_at, last_error=runtime_error, consecutive_failures=gemini_failures, observation_count=observation_number)
+                        _write_runtime_status(database, state="degraded", title=title, started_at=session_started_at, last_capture_at=last_capture_at, last_ocr_at=last_ocr_at, last_gemini_at=last_gemini_at, last_error=runtime_error, consecutive_failures=gemini_failures, observation_count=observation_number, automation_enabled=automation_enabled and gemini_enabled)
                         print(
                             f"Gemini advisor unavailable ({type(exc).__name__}: {exc}); "
                             f"retrying in {delay:g}s (failures: {gemini_failures}).",
@@ -349,7 +349,7 @@ def run_smart_monitor(
                     screenshot.unlink(missing_ok=True)
             if keep_screenshot:
                 _prune_screenshots(screenshot_dir)
-            _write_runtime_status(database, state="running" if runtime_error is None else "degraded", title=title, started_at=session_started_at, last_capture_at=last_capture_at, last_ocr_at=last_ocr_at, last_gemini_at=last_gemini_at, last_error=runtime_error, consecutive_failures=gemini_failures, observation_count=observation_number)
+            _write_runtime_status(database, state="running" if runtime_error is None else "degraded", title=title, started_at=session_started_at, last_capture_at=last_capture_at, last_ocr_at=last_ocr_at, last_gemini_at=last_gemini_at, last_error=runtime_error, consecutive_failures=gemini_failures, observation_count=observation_number, automation_enabled=automation_enabled and gemini_enabled)
 
             if duration and time.monotonic() - started >= duration:
                 break
@@ -359,7 +359,7 @@ def run_smart_monitor(
     except KeyboardInterrupt:
         print("\nSmart monitor stopped.", flush=True)
 
-    _write_runtime_status(database, state="stopped", title=title, started_at=session_started_at, last_capture_at=last_capture_at, last_ocr_at=last_ocr_at, last_gemini_at=last_gemini_at, last_error=runtime_error, consecutive_failures=gemini_failures, observation_count=observation_number)
+    _write_runtime_status(database, state="stopped", title=title, started_at=session_started_at, last_capture_at=last_capture_at, last_ocr_at=last_ocr_at, last_gemini_at=last_gemini_at, last_error=runtime_error, consecutive_failures=gemini_failures, observation_count=observation_number, automation_enabled=automation_enabled and gemini_enabled)
     print(
         f"Stopped. New OCR observations: {observation_number}; "
         f"total history: {store.observation_count()}.",
