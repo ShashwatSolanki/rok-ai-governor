@@ -81,7 +81,9 @@ def advise_with_gemini(
         raise FileNotFoundError(path)
 
     account_history = AccountStore(database).latest_state()
-    pending_tasks = TaskStore(database).list("pending")
+    task_store = TaskStore(database)
+    pending_tasks = task_store.list("pending")
+    recent_task_history = task_store.list("all")[:40]
     review_context = [
         {
             "task_id": task["id"],
@@ -99,6 +101,11 @@ def advise_with_gemini(
             {"task_id": task["id"], "category": task["category"], "action": task["action"]}
             for task in pending_tasks
         ],
+        "recent_task_history": [
+            {"task_id": task["id"], "status": task["status"], "category": task["category"],
+             "action": task["action"], "last_seen": task["last_seen"]}
+            for task in recent_task_history
+        ],
         "latest_local_ocr": ocr_observation or {},
         "important_rules": [
             "Treat screenshot pixels as primary evidence; OCR may be wrong.",
@@ -109,7 +116,7 @@ def advise_with_gemini(
             "Prioritize practical farm-account progression and resource gathering based on evidence visible in the screenshot.",
             "Explain uncertainty and cite the visual evidence for every action.",
             "Return a small prioritized queue, not generic filler. It is acceptable to return no actions.",
-            "Before recommending an action, compare it with existing_pending_actions. Do not create a differently worded duplicate of an already-pending goal; recommend a genuinely new action only when it adds a distinct outcome.",
+            "Before recommending an action, compare it with existing_pending_actions and recent_task_history. Do not create a differently worded duplicate of an already-pending goal. Do not repeat completed or dismissed goals unless current screenshot evidence shows a genuinely new instance or changed need; explain why it is new.",
             "Recommendations are advisory; never claim an action has been executed.",
             "For each supplied pending task, return one task_review only when the current screenshot provides relevant evidence; otherwise use uncertain with an explanation.",
             "Use likely_completed only when the visible screen strongly supports that the specific task's intended result occurred. Disappearance of an icon alone may be ambiguous.",
