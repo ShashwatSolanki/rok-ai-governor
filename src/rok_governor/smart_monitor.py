@@ -288,7 +288,7 @@ def run_smart_monitor(
                             if not execution_store.claim(execution_command):
                                 continue
                             try:
-                                sent = execute_safe_actions(title, proposed)
+                                sent = execute_safe_actions(title, execution_command)
                                 execution_store.finish(
                                     execution_command, "posted",
                                     {"input_results": sent, "decision_screenshot": str(screenshot),
