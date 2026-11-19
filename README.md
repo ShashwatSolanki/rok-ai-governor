@@ -109,7 +109,7 @@ Inspect the latest runtime heartbeat from another terminal:
 python -m rok_governor health
 ```
 
-The health command reads `data/runtime_status.json` and reports the last successful capture, OCR and Gemini operations, current monitor state, and the latest error. It is a local diagnostic snapshot; if the process is killed abruptly, its state may remain at the last recorded heartbeat rather than changing to `stopped`.
+The health command reads `data/runtime_status.json` and reports heartbeat freshness, the last successful capture, OCR and Gemini operations, pending/completed recommendation counts, current monitor state, and the latest error. A heartbeat older than three minutes is flagged as possibly stale. It is a local diagnostic snapshot; if the process is killed abruptly, its state may remain at the last recorded heartbeat rather than changing to `stopped`.
 
 This is unattended monitoring and decision support, not unattended gameplay: it does not click, type, dispatch marches, collect rewards, spend resources, or otherwise control the game. Gemini recommendations remain suggestions and should be checked against the actual screen. Keep the game window restored (it may sit behind other windows); minimised GPU rendering can produce stale or blank captures. Gemini calls use API quota and send screenshots to Google.
 
