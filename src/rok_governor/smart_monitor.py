@@ -280,6 +280,8 @@ def run_smart_monitor(
                                     fresh_frame.unlink(missing_ok=True)
 
                             execution_command = dict(proposed)
+                            with Image.open(screenshot) as decision_image:
+                                execution_command["screenshot_size"] = decision_image.size
                             execution_command["screen_fingerprint"] = hashlib.sha256(
                                 signature.tobytes()
                             ).hexdigest()
@@ -328,7 +330,14 @@ def run_smart_monitor(
                                     )
                                 break
                             except WindowInputError as exc:
-                                execution_store.finish(execution_command, "blocked", {"reason": str(exc)})
+                                execution_store.finish(execution_command, "blocked", {
+                                    "reason": str(exc),
+                                    "action_type": proposed.get("action_type"),
+                                    "title": proposed.get("title"),
+                                    "target": proposed.get("target"),
+                                    "input_actions": proposed.get("input_actions"),
+                                    "screenshot_size": execution_command.get("screenshot_size"),
+                                })
                                 print(f"Automation safely skipped '{proposed.get('title')}': {exc}", flush=True)
                             except Exception as exc:
                                 execution_store.finish(
