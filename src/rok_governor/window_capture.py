@@ -97,6 +97,40 @@ def find_windows(title_filter: str = "") -> list[dict]:
     return matches
 
 
+
+def find_child_windows(parent_hwnd: int) -> list[dict]:
+    """Return visible and hidden descendant HWNDs for a specific top-level window."""
+    if not isinstance(parent_hwnd, int) or not win32gui.IsWindow(parent_hwnd):
+        raise ValueError(f"Invalid parent window handle: {parent_hwnd!r}")
+
+    matches: list[dict] = []
+
+    def visit(hwnd: int, _extra: object) -> None:
+        try:
+            rect = win32gui.GetWindowRect(hwnd)
+            client_rect = win32gui.GetClientRect(hwnd)
+            class_name = win32gui.GetClassName(hwnd)
+            title = win32gui.GetWindowText(hwnd).strip()
+            _, process_id = win32gui.GetWindowThreadProcessId(hwnd)
+        except win32gui.error:
+            return
+        left, top, right, bottom = rect
+        matches.append({
+            "hwnd": hwnd,
+            "parent_hwnd": parent_hwnd,
+            "title": title,
+            "class_name": class_name,
+            "rect": rect,
+            "client_rect": client_rect,
+            "visible": bool(win32gui.IsWindowVisible(hwnd)),
+            "minimized": bool(win32gui.IsIconic(hwnd)),
+            "process_id": process_id,
+            "size": (right - left, bottom - top),
+        })
+
+    win32gui.EnumChildWindows(parent_hwnd, visit, None)
+    return matches
+
 def capture_window(
     title_filter: str = "BlueStacks",
     output_dir: str | Path = "screenshots",
