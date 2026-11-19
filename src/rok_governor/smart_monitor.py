@@ -94,7 +94,12 @@ def run_smart_monitor(
                 changed_streak = 0
 
             now = time.monotonic()
-            changed = changed_streak >= stable_frames
+            # Debounce animated UI effects so a pulsing icon or moving background
+            # cannot force OCR on every pair of samples.
+            changed = (
+                changed_streak >= stable_frames
+                and (last_ocr == 0.0 or now - last_ocr >= 10.0)
+            )
             heartbeat_due = last_ocr == 0.0 or now - last_ocr >= heartbeat
             should_analyse = changed or heartbeat_due
 
