@@ -148,9 +148,11 @@ def run_smart_monitor(
                         from .task_store import TaskStore
 
                         synced = TaskStore(database).ingest(advice)
+                        reviews_saved = TaskStore(database).record_reviews(advice)
                         print(
                             f"Gemini recommendations saved: {advice_path}; "
-                            f"task queue synced ({synced} recommendation(s)).",
+                            f"task queue synced ({synced} recommendation(s)); "
+                            f"visual reviews saved ({reviews_saved}).",
                             flush=True,
                         )
                     except Exception as exc:
