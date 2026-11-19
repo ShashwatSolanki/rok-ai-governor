@@ -286,7 +286,11 @@ def main() -> int:
         if not health_path.is_file():
             print("No runtime health record yet. Start the governor with 'python -m rok_governor run'.")
             return 0
-        health = json.loads(health_path.read_text(encoding="utf-8"))
+        try:
+            health = json.loads(health_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            print(f"Runtime health record is unreadable: {type(exc).__name__}: {exc}")
+            return 1
         print(f"State: {health.get('state', 'unknown')}")
         print(f"Mode: {health.get('mode', 'unknown')}")
         print(f"Game window: {health.get('window_title', 'unknown')}")
