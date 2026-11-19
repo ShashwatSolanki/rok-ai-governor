@@ -105,6 +105,55 @@ def main() -> int:
         print(f"Window screenshot saved: {output}")
         return 0
 
+    if args.command == "status":
+        from .account_store import AccountStore
+
+        store = AccountStore(args.database)
+        print(f"Observations recorded: {store.observation_count()}")
+        state = store.latest_state()
+        if not state:
+            print("No account observations yet. Run 'python -m rok_governor watch'.")
+            return 0
+        for item in state:
+            print(f"{item['key']}: {json.dumps(item['value'], ensure_ascii=False)}")
+        return 0
+
+    if args.command == "watch":
+        from .account_store import AccountStore
+        from .window_capture import capture_window
+
+        if args.interval < 5:
+            raise ValueError("--interval must be at least 5 seconds.")
+        store = AccountStore(args.database)
+        started = time.monotonic()
+        print(
+            f"Watching RoK window containing {args.title!r} every {args.interval}s. "
+            "Read-only mode; press Ctrl+C to stop.",
+            flush=True,
+        )
+        try:
+            while True:
+                scan_started = time.monotonic()
+                screenshot = capture_window(args.title, args.screenshot_dir)
+                observation = analyse_image(screenshot, profile=args.profile)
+                observation["source"] = str(screenshot)
+                observation_id = store.record(observation)
+                output = save_observation(observation, args.output_dir)
+                print(
+                    f"Recorded observation #{observation_id}: "
+                    f"screen={observation.get('screen', {}).get('type', 'unknown')} "
+                    f"review_required={observation.get('review_required')} "
+                    f"json={output}",
+                    flush=True,
+                )
+                if args.duration and time.monotonic() - started >= args.duration:
+                    break
+                elapsed = time.monotonic() - scan_started
+                time.sleep(max(0, args.interval - elapsed))
+        except KeyboardInterrupt:
+            print("\\nStopped watching.")
+        return 0
+
     if args.command == "analyze":
         print(f"[1/3] Loading screenshot: {args.image}", flush=True)
         if not args.image.is_file():
