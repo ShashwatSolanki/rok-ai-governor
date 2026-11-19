@@ -15,6 +15,7 @@ from typing import Any
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
+from PIL import Image
 
 from .account_store import AccountStore
 from .task_store import TaskStore
@@ -112,6 +113,9 @@ def advise_with_gemini(
     if not path.is_file():
         raise FileNotFoundError(path)
 
+    with Image.open(path) as screenshot_image:
+        screenshot_width, screenshot_height = screenshot_image.size
+
     account_history = AccountStore(database).latest_state()
     task_store = TaskStore(database)
     pending_tasks = task_store.list("pending")
@@ -129,6 +133,12 @@ def advise_with_gemini(
     from .execution_store import ExecutionStore
     pending_execution_reviews = ExecutionStore(database).pending_verification()
     context = {
+        "screenshot_geometry": {
+            "width_pixels": screenshot_width,
+            "height_pixels": screenshot_height,
+            "coordinate_origin": "top-left",
+            "normalized_coordinate_range": "0..1000",
+        },
         "known_account_state": account_history,
         "pending_tasks_to_verify": review_context,
         "posted_actions_to_visually_verify": pending_execution_reviews,
@@ -156,7 +166,7 @@ def advise_with_gemini(
             "For each recommended action that can be expressed as a concrete in-game operation, also emit a structured command. Commands must be declarative data, never code, shell commands, macros, or key sequences.",
             "Each command must state exact visible target, preconditions, ordered steps, a way to verify the result, rationale, risk, and confidence. If target or prerequisites are not visible, emit inspect_screen instead of guessing.",
             "Do not include commands to spend gems, buy bundles, use rare items, or make irreversible account changes. For those, explain the decision in advice only and mark that human judgment is required.",
-            "For low-risk routine actions only, provide input_actions as explicit click targets in normalized screenshot coordinates 0..1000 (0,0 top-left). Provide exactly one click per screenshot, and only when the exact target is clearly visible. Every click must have a purpose. The governor will re-capture the window before dispatch and ask you to reassess the next screen before any subsequent click. For anything uncertain or involving resource costs, omit input_actions. Never emit keyboard actions, text entry, arbitrary coordinates unrelated to a visible control, purchases, gems, rare items, upgrades, training, or irreversible actions. The local governor independently enforces an allow-list and confidence threshold before any click. A click is not proof of success; require a fresh screenshot to assess the outcome.",
+            "For low-risk routine actions only, provide input_actions as explicit click targets in normalized screenshot coordinates 0..1000 (0,0 top-left). The screenshot_geometry gives the exact pixel width and height. Choose the visual CENTER of the intended button/control, not its edge or a nearby empty area. Estimate pixel center (px, py) first, then convert using x=round(px/width_pixels*1000) and y=round(py/height_pixels*1000). Before returning a click, verify that converting the normalized values back (x/1000*width_pixels, y/1000*height_pixels) lands on the visible control. Never guess coordinates from the window border or confuse screenshot pixels with client coordinates. If the control center or its coordinates are uncertain, omit input_actions and explain what needs inspection. Provide exactly one click per screenshot, and only when the exact target is clearly visible. Every click must have a purpose. The governor will re-capture the window before dispatch and ask you to reassess the next screen before any subsequent click. For anything uncertain or involving resource costs, omit input_actions. Never emit keyboard actions, text entry, arbitrary coordinates unrelated to a visible control, purchases, gems, rare items, upgrades, training, or irreversible actions. The local governor independently enforces an allow-list and confidence threshold before any click. A click is not proof of success; require a fresh screenshot to assess the outcome.",
             "For each supplied pending task, return one task_review only when the current screenshot provides relevant evidence; otherwise use uncertain with an explanation.",
             "Use likely_completed only when the visible screen strongly supports that the specific task's intended result occurred. Disappearance of an icon alone may be ambiguous.",
             "Never treat a task as completed merely because it is old or not visible on this screen. Use still_pending only when the screenshot visibly shows the task remains undone.",
