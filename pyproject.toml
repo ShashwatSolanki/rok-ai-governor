@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "rok-ai-governor"
 version = "0.1.0"
-description = "Read-only screenshot analysis companion for Rise of Kingdoms"
+description = "Gemini-powered Rise of Kingdoms account governor"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -16,6 +16,7 @@ dependencies = [
   "easyocr>=1.7.1",
   "google-genai>=1.0.0",
   "python-dotenv>=1.0.1",
+  "pywin32>=306; platform_system == \"Windows\"",
 ]
 
 [tool.setuptools.packages.find]
