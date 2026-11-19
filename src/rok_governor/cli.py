@@ -153,6 +153,19 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("task-reviews", help="Show Gemini's visual task-verification suggestions.").add_argument(
         "--database", default="data/account_history.sqlite3"
     )
+    commands_parser = subparsers.add_parser(
+        "commands", help="List structured in-game commands for you to perform manually."
+    )
+    commands_parser.add_argument("--database", default="data/account_history.sqlite3")
+    commands_parser.add_argument(
+        "--status", choices=("proposed", "completed", "dismissed", "all"), default="proposed"
+    )
+    command_done_parser = subparsers.add_parser(
+        "command-done", help="Record that you manually performed or dismissed a proposed command."
+    )
+    command_done_parser.add_argument("command_id", type=int)
+    command_done_parser.add_argument("--status", choices=("completed", "dismissed", "proposed"), default="completed")
+    command_done_parser.add_argument("--database", default="data/account_history.sqlite3")
     return parser
 
 
@@ -221,10 +234,46 @@ def main() -> int:
 
         synced_tasks = TaskStore(args.database).ingest(result)
         saved_reviews = TaskStore(args.database).record_reviews(result)
+        from .command_store import CommandStore
+
+        saved_commands = CommandStore(args.database).ingest(result)
         print(json.dumps(result, indent=2, ensure_ascii=False))
         print(f"\\nGemini advice saved: {output}")
         print(f"Governor task queue updated: {synced_tasks} recommendation(s) synced.")
         print(f"Gemini task reviews saved: {saved_reviews}.")
+        print(f"Structured player commands queued: {saved_commands}.")
+        return 0
+
+    if args.command == "commands":
+        from .command_store import CommandStore
+
+        commands = CommandStore(args.database).list(args.status)
+        if not commands:
+            print(f"No {args.status} governor commands.")
+            return 0
+        for item in commands:
+            print(f"CMD #{item['id']} [{item['status'].upper()}] [{item['risk'].upper()}] {item['title']}")
+            print(f"   Type: {item['action_type']} | Target: {item['target'] or 'not specified'} | Confidence: {item['confidence']}")
+            if item["rationale"]:
+                print(f"   Why: {item['rationale']}")
+            for condition in item["preconditions"]:
+                print(f"   Before: {condition}")
+            for index, step in enumerate(item["steps"], 1):
+                print(f"   {index}. {step}")
+            if item["verification"]:
+                print(f"   Verify: {item['verification']}")
+            print(f"   Record after you perform it: python -m rok_governor command-done {item['id']}")
+        print("These are instructions for you; the governor does not execute game inputs.")
+        return 0
+
+    if args.command == "command-done":
+        from .command_store import CommandStore
+
+        changed = CommandStore(args.database).set_status(args.command_id, args.status)
+        if not changed:
+            print(f"Command #{args.command_id} was not found.")
+            return 1
+        print(f"Command #{args.command_id} marked {args.status}.")
         return 0
 
     if args.command == "plan":
