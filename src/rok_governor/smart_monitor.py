@@ -289,14 +289,19 @@ def run_smart_monitor(
                                 sent = execute_safe_actions(title, proposed)
                                 execution_store.finish(
                                     execution_command, "posted",
-                                    {"input_results": sent, "verification_criteria": proposed.get("verification"), "verification_status": "awaiting_post_action_capture"},
+                                    {"input_results": sent, "decision_screenshot": str(screenshot),
+                                     "screen_fingerprint": execution_command["screen_fingerprint"],
+                                     "verification_criteria": proposed.get("verification"),
+                                     "verification_status": "awaiting_post_action_capture"},
                                 )
                                 time.sleep(1.2)
                                 try:
                                     verification_frame = capture_window(title, screenshot_dir)
                                     execution_store.finish(
                                         execution_command, "posted",
-                                        {"input_results": sent, "verification_criteria": proposed.get("verification"),
+                                        {"input_results": sent, "decision_screenshot": str(screenshot),
+                                         "screen_fingerprint": execution_command["screen_fingerprint"],
+                                         "verification_criteria": proposed.get("verification"),
                                          "post_action_screenshot": str(verification_frame),
                                          "verification_status": "awaiting_next_visual_assessment"},
                                     )
@@ -310,7 +315,9 @@ def run_smart_monitor(
                                 except Exception as capture_exc:
                                     execution_store.finish(
                                         execution_command, "posted",
-                                        {"input_results": sent, "verification_criteria": proposed.get("verification"),
+                                        {"input_results": sent, "decision_screenshot": str(screenshot),
+                                         "screen_fingerprint": execution_command["screen_fingerprint"],
+                                         "verification_criteria": proposed.get("verification"),
                                          "verification_status": "capture_failed",
                                          "capture_error": str(capture_exc)},
                                     )
