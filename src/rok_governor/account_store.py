@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .sqlite_utils import connect_database
+
 
 class AccountStore:
     """Store every scan and maintain a best-known, non-destructive state."""
@@ -13,7 +15,7 @@ class AccountStore:
     def __init__(self, database: str | Path = "data/account_history.sqlite3"):
         self.path = Path(database)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self._connect() as connection:
+        with connect_database(self.path) as connection:
             connection.execute("""
                 CREATE TABLE IF NOT EXISTS observations (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -31,11 +33,6 @@ class AccountStore:
                     confidence REAL
                 )
             """)
-
-    def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.path)
-        connection.row_factory = sqlite3.Row
-        return connection
 
     @staticmethod
     def _flatten(value: Any, prefix: str = "") -> dict[str, Any]:
@@ -55,7 +52,7 @@ class AccountStore:
         screen_type = (observation.get("screen") or {}).get("type")
         flattened = self._flatten(observation.get("account_state") or {})
 
-        with self._connect() as connection:
+        with connect_database(self.path) as connection:
             cursor = connection.execute(
                 """INSERT INTO observations
                    (observed_at, screen_type, source, payload_json)
@@ -84,7 +81,7 @@ class AccountStore:
             return int(cursor.lastrowid)
 
     def latest_state(self) -> list[dict[str, Any]]:
-        with self._connect() as connection:
+        with connect_database(self.path, row_factory=sqlite3.Row) as connection:
             rows = connection.execute(
                 """SELECT state_key, value_json, observed_at, confidence
                    FROM account_state ORDER BY state_key"""
@@ -100,6 +97,6 @@ class AccountStore:
         ]
 
     def observation_count(self) -> int:
-        with self._connect() as connection:
+        with connect_database(self.path, row_factory=sqlite3.Row) as connection:
             row = connection.execute("SELECT COUNT(*) AS total FROM observations").fetchone()
         return int(row["total"])
