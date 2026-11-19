@@ -224,11 +224,15 @@ def run_smart_monitor(
                         task_store = TaskStore(database)
                         synced = task_store.ingest(advice)
                         reviews_saved = task_store.record_reviews(advice)
+                        from .command_store import CommandStore
+
+                        commands_saved = CommandStore(database).ingest(advice)
                         keep_screenshot = True
                         print(
                             f"Gemini recommendations saved: {advice_path}; "
                             f"task queue synced ({synced} recommendation(s)); "
-                            f"visual reviews saved ({reviews_saved}).",
+                            f"visual reviews saved ({reviews_saved}); "
+                            f"structured commands queued ({commands_saved}).",
                             flush=True,
                         )
                         gemini_failures = 0
