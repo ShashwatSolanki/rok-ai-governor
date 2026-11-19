@@ -27,9 +27,13 @@ BLUESTACKS_REGIONS = {
 # Initial normalized regions calibrated from the supplied official PC client capture.
 PC_REGIONS = {
     "player_header": (0.00, 0.00, 0.24, 0.19),
-    "food": (0.82, 0.00, 0.92, 0.075),
-    "wood": (0.91, 0.00, 1.00, 0.075),
-    "stone": (0.975, 0.00, 1.00, 0.075),
+    # The native 1920x1080 client places all five resource counters in one
+    # horizontal strip. These bounds isolate each icon/value pair.
+    "food": (0.565, 0.00, 0.72, 0.075),
+    "wood": (0.72, 0.00, 0.80, 0.075),
+    "stone": (0.80, 0.00, 0.87, 0.075),
+    "gold": (0.87, 0.00, 0.945, 0.075),
+    "gems": (0.945, 0.00, 0.995, 0.075),
     "timers": (0.82, 0.08, 1.00, 0.42),
     "quests": (0.00, 0.20, 0.16, 0.72),
 }
