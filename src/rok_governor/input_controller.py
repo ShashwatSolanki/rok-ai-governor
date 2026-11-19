@@ -20,6 +20,7 @@ def post_click(
     *,
     x_normalized: int,
     y_normalized: int,
+    screenshot_size: tuple[int, int] | None = None,
     hold_seconds: float = 0.08,
 ) -> dict[str, Any]:
     """Post one left-click to normalized coordinates in a unique game window.
@@ -29,8 +30,12 @@ def post_click(
     """
     if type(x_normalized) is not int or type(y_normalized) is not int:
         raise WindowInputError("Click coordinates must be integer normalized values.")
-    if not 30 <= x_normalized <= 970 or not 30 <= y_normalized <= 970:
-        raise WindowInputError("Click rejected: coordinates too close to window edges.")
+    if not 0 <= x_normalized <= 1000 or not 0 <= y_normalized <= 1000:
+        raise WindowInputError("Click rejected: normalized coordinates must be within 0..1000.")
+    if screenshot_size is not None:
+        if (not isinstance(screenshot_size, tuple) or len(screenshot_size) != 2
+                or any(type(value) is not int or value <= 0 for value in screenshot_size)):
+            raise WindowInputError(f"Invalid screenshot geometry: {screenshot_size!r}")
     if not math.isfinite(hold_seconds) or not 0.04 <= hold_seconds <= 0.2:
         raise WindowInputError("Click hold duration is outside the permitted range.")
 
@@ -57,12 +62,37 @@ def post_click(
         raise WindowInputError("Target game window is no longer available.")
 
     left, top, right, bottom = target["rect"]
-    screen_x = left + round((right - left) * x_normalized / 1000)
-    screen_y = top + round((bottom - top) * y_normalized / 1000)
+    window_width, window_height = right - left, bottom - top
+    if screenshot_size is None:
+        screenshot_width, screenshot_height = window_width, window_height
+    else:
+        screenshot_width, screenshot_height = screenshot_size
+
+    # Gemini coordinates are normalized against the actual screenshot pixels.
+    # Scale them into the current Win32 window rectangle before converting to
+    # client coordinates; this accounts for DPI virtualization and any size
+    # discrepancy between PrintWindow's bitmap and GetWindowRect.
+    screenshot_x = round(x_normalized * screenshot_width / 1000)
+    screenshot_y = round(y_normalized * screenshot_height / 1000)
+    screenshot_x = min(screenshot_width - 1, screenshot_x)
+    screenshot_y = min(screenshot_height - 1, screenshot_y)
+    window_x = round(screenshot_x * window_width / screenshot_width)
+    window_y = round(screenshot_y * window_height / screenshot_height)
+    screen_x = left + window_x
+    screen_y = top + window_y
     client_x, client_y = win32gui.ScreenToClient(hwnd, (screen_x, screen_y))
     client_rect = win32gui.GetClientRect(hwnd)
-    if not (0 <= client_x < client_rect[2] and 0 <= client_y < client_rect[3]):
-        raise WindowInputError("Mapped click falls outside the game client area.")
+    client_width, client_height = client_rect[2] - client_rect[0], client_rect[3] - client_rect[1]
+    geometry = (
+        f"target={target['title']!r}, normalized=({x_normalized},{y_normalized}), "
+        f"screenshot={screenshot_width}x{screenshot_height}, "
+        f"window_rect={(left, top, right, bottom)}, "
+        f"client_rect={client_rect}, mapped_client=({client_x},{client_y})"
+    )
+    # Validate against the real client area rather than an arbitrary normalized
+    # inset: legitimate controls can sit close to the top or side of the game.
+    if not (2 <= client_x < client_width - 2 and 2 <= client_y < client_height - 2):
+        raise WindowInputError(f"Click rejected: mapped point is outside the safe client area; {geometry}")
 
     lparam = ((client_y & 0xFFFF) << 16) | (client_x & 0xFFFF)
     down_posted = False
@@ -87,6 +117,11 @@ def post_click(
         "y_normalized": y_normalized,
         "client_x": client_x,
         "client_y": client_y,
+        "screenshot_pixel": [screenshot_x, screenshot_y],
+        "screenshot_size": [screenshot_width, screenshot_height],
+        "window_rect": [left, top, right, bottom],
+        "client_rect": list(client_rect),
+        "dpi_awareness": getattr(__import__("rok_governor.window_capture", fromlist=["DPI_AWARENESS"]), "DPI_AWARENESS", "unknown"),
         "sent_at": time.time(),
         "delivery": "posted_to_window_not_foregrounded",
     }
@@ -99,7 +134,7 @@ def execute_safe_actions(
     minimum_confidence: float = 0.88,
 ) -> list[dict[str, Any]]:
     """Execute one allow-listed low-risk click from a fresh Gemini assessment."""
-    allowed_command_types = {"inspect_screen", "open_menu", "select_tab", "start_gathering"}
+    allowed_command_types = {"inspect_screen", "open_menu", "open_academy", "select_tab", "start_gathering"}
     if command.get("action_type") not in allowed_command_types:
         raise WindowInputError("Command type is not enabled for unattended execution.")
     if str(command.get("risk", "unknown")).strip().casefold() != "low":
@@ -141,6 +176,7 @@ def execute_safe_actions(
         title_filter,
         x_normalized=action.get("x"),
         y_normalized=action.get("y"),
+        screenshot_size=command.get("screenshot_size"),
     )
     result["purpose"] = purpose.strip()
     return [result]
