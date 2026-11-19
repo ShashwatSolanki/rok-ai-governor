@@ -195,6 +195,7 @@ def run_smart_monitor(
                             flush=True,
                         )
                     except Exception as exc:
+                        runtime_error = f"Local OCR {type(exc).__name__}: {exc}"
                         print(
                             f"Local OCR unavailable ({type(exc).__name__}: {exc}); "
                             "Gemini will continue using screenshot pixels.",
@@ -336,6 +337,11 @@ def run_resilient_monitor(
         except Exception as exc:
             failures += 1
             delay = min(max_retry_delay, retry_delay * (2 ** min(failures - 1, 10)))
+            _write_runtime_status(
+                database, state="restarting", title=title,
+                last_error=f"Monitor {type(exc).__name__}: {exc}",
+                consecutive_failures=failures,
+            )
             print(
                 f"Monitor cycle failed ({type(exc).__name__}: {exc}). "
                 f"Restarting in {delay:g}s (consecutive failures: {failures}).",
