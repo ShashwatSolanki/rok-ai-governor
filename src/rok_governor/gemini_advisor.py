@@ -152,7 +152,7 @@ def advise_with_gemini(
             "Explain uncertainty and cite the visual evidence for every action.",
             "Return a small prioritized queue, not generic filler. It is acceptable to return no actions.",
             "Before recommending an action, compare it with existing_pending_actions and recent_task_history. Do not create a differently worded duplicate of an already-pending goal. Do not repeat completed or dismissed goals unless current screenshot evidence shows a genuinely new instance or changed need; explain why it is new.",
-            "Recommendations and commands are proposals only; never claim an action has been executed.",
+            "New recommendations and commands are proposals only; do not claim they have been executed. Assess previously posted actions separately through execution_reviews using only current visible evidence.",
             "For each recommended action that can be expressed as a concrete in-game operation, also emit a structured command. Commands must be declarative data, never code, shell commands, macros, or key sequences.",
             "Each command must state exact visible target, preconditions, ordered steps, a way to verify the result, rationale, risk, and confidence. If target or prerequisites are not visible, emit inspect_screen instead of guessing.",
             "Do not include commands to spend gems, buy bundles, use rare items, or make irreversible account changes. For those, explain the decision in advice only and mark that human judgment is required.",
