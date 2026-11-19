@@ -143,7 +143,7 @@ def analyse_image(image_path: str | Path, profile: str = "bluestacks") -> dict[s
     header = _parse_header(header_detections)
 
     resources: dict[str, dict[str, Any] | None] = {}
-    for resource in ("food", "wood", "stone"):
+    for resource in ("food", "wood", "stone", "gold", "gems"):
         candidates = [
             item for item in detections if item["region"] == resource
         ]
@@ -198,12 +198,15 @@ def analyse_image(image_path: str | Path, profile: str = "bluestacks") -> dict[s
         "quest_text": quest_text,
         "timer_text": timer_text,
         "detections": detections,
-        "review_required": any(
-            item.get("needs_review", False)
-            for item in [
-                *header.values(),
-                *(value for value in resources.values() if value is not None),
-            ]
+        "review_required": (
+            any(item is None for item in resources.values())
+            or any(
+                item.get("needs_review", False)
+                for item in [
+                    *header.values(),
+                    *(value for value in resources.values() if value is not None),
+                ]
+            )
         ),
         "note": (
             "OCR is approximate. Abbreviated resource quantities are converted "
