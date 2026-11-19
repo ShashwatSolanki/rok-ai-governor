@@ -192,10 +192,10 @@ def main() -> int:
         output = save_advice(result, args.output)
         from .task_store import TaskStore
 
-        new_tasks = TaskStore(args.database).ingest(result)
+        synced_tasks = TaskStore(args.database).ingest(result)
         print(json.dumps(result, indent=2, ensure_ascii=False))
         print(f"\\nGemini advice saved: {output}")
-        print(f"Governor task queue updated: {new_tasks} new task(s).")
+        print(f"Governor task queue updated: {synced_tasks} recommendation(s) synced.")
         return 0
 
     if args.command == "plan":
