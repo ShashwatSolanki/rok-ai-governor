@@ -126,6 +126,9 @@ def build_parser() -> argparse.ArgumentParser:
     done_parser.add_argument("task_id", type=int)
     done_parser.add_argument("--status", choices=("completed", "dismissed", "pending"), default="completed")
     done_parser.add_argument("--database", default="data/account_history.sqlite3")
+    subparsers.add_parser("task-reviews", help="Show Gemini's visual task-verification suggestions.").add_argument(
+        "--database", default="data/account_history.sqlite3"
+    )
     return parser
 
 
@@ -193,9 +196,11 @@ def main() -> int:
         from .task_store import TaskStore
 
         synced_tasks = TaskStore(args.database).ingest(result)
+        saved_reviews = TaskStore(args.database).record_reviews(result)
         print(json.dumps(result, indent=2, ensure_ascii=False))
         print(f"\\nGemini advice saved: {output}")
         print(f"Governor task queue updated: {synced_tasks} recommendation(s) synced.")
+        print(f"Gemini task reviews saved: {saved_reviews}.")
         return 0
 
     if args.command == "plan":
@@ -221,6 +226,25 @@ def main() -> int:
                 print(f"   Why: {task['why']}")
             for step in task["manual_steps"]:
                 print(f"   - {step}")
+        return 0
+
+    if args.command == "task-reviews":
+        from .task_store import TaskStore
+
+        reviews = TaskStore(args.database).list_reviews()
+        if not reviews:
+            print("No Gemini task reviews yet. Run 'advise --fast' to compare the current screen with pending tasks.")
+            return 0
+        for review in reviews:
+            print(
+                f"#{review['id']} [{review['assessment'].upper()}] "
+                f"confidence={review['confidence']}"
+            )
+            print(f"   Task: {review['action']} [{review['priority'].upper()}]")
+            print(f"   Visual evidence: {review['visual_evidence']}")
+            print(f"   Reviewed: {review['reviewed_at']}")
+            if review["assessment"] == "likely_completed":
+                print(f"   Confirm manually with: python -m rok_governor task-done {review['id']}")
         return 0
 
     if args.command == "task-done":
