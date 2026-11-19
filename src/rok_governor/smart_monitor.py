@@ -227,6 +227,52 @@ def run_smart_monitor(
                         from .command_store import CommandStore
 
                         commands_saved = CommandStore(database).ingest(advice)
+
+                        # Execute at most one idempotent, low-risk click command per
+                        # Gemini cycle. All other proposals remain in the command queue.
+                        from .execution_store import ExecutionStore
+                        from .input_controller import execute_safe_actions, WindowInputError
+
+                        execution_store = ExecutionStore(database)
+                        for proposed in (advice.get("advice") or {}).get("commands") or []:
+                            if not proposed.get("input_actions"):
+                                continue
+                            if not proposed.get("preconditions") or not proposed.get("verification"):
+                                continue
+                            if not execution_store.claim(proposed):
+                                continue
+                            try:
+                                sent = execute_safe_actions(title, proposed)
+                                time.sleep(1.2)
+                                verification_frame = capture_window(title, screenshot_dir)
+                                execution_store.finish(
+                                    proposed, "posted",
+                                    {"input_results": sent, "post_action_screenshot": str(verification_frame),
+                                     "verification_status": "awaiting_next_visual_assessment"},
+                                )
+                                keep_screenshot = True
+                                print(
+                                    f"Background input posted for '{proposed.get('title')}'; "
+                                    f"post-action frame saved to {verification_frame}. "
+                                    "Outcome is not yet verified.",
+                                    flush=True,
+                                )
+                                break
+                            except WindowInputError as exc:
+                                execution_store.finish(proposed, "blocked", {"reason": str(exc)})
+                                print(f"Automation safely skipped '{proposed.get('title')}': {exc}", flush=True)
+                            except Exception as exc:
+                                execution_store.finish(
+                                    proposed, "error",
+                                    {"error_type": type(exc).__name__, "reason": str(exc)},
+                                )
+                                print(
+                                    f"Automation failed for '{proposed.get('title')}': "
+                                    f"{type(exc).__name__}: {exc}",
+                                    flush=True,
+                                )
+                                break
+
                         keep_screenshot = True
                         print(
                             f"Gemini recommendations saved: {advice_path}; "
