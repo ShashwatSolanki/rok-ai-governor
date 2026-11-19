@@ -1,8 +1,9 @@
 """Window-targeted background mouse input for the RoK governor.
 
-Only one bounded left-click per fresh visual assessment is supported. Inputs
-are posted to the selected window and do not move the physical mouse or
-activate the game window. Some game clients ignore background messages.
+Only one bounded left-click per fresh visual assessment is supported.
+Background mode posts window messages without focus. Foreground mode is an
+explicit opt-in that focuses the game and moves the physical mouse because
+some game clients ignore background messages.
 """
 from __future__ import annotations
 
@@ -21,12 +22,13 @@ def post_click(
     x_normalized: int,
     y_normalized: int,
     screenshot_size: tuple[int, int] | None = None,
+    input_mode: str = "background",
     hold_seconds: float = 0.08,
 ) -> dict[str, Any]:
-    """Post one left-click to normalized coordinates in a unique game window.
+    """Send one left-click to normalized coordinates in a unique game window.
 
-    Coordinates use a 0..1000 range over the captured window rectangle. This
-    method never foregrounds the target and never uses desktop-wide input.
+    Coordinates use a 0..1000 range over the captured window rectangle.
+    Foreground input must be explicitly selected by the caller.
     """
     if type(x_normalized) is not int or type(y_normalized) is not int:
         raise WindowInputError("Click coordinates must be integer normalized values.")
@@ -36,10 +38,13 @@ def post_click(
         if (not isinstance(screenshot_size, tuple) or len(screenshot_size) != 2
                 or any(type(value) is not int or value <= 0 for value in screenshot_size)):
             raise WindowInputError(f"Invalid screenshot geometry: {screenshot_size!r}")
+    if input_mode not in {"background", "foreground"}:
+        raise WindowInputError("Input mode must be 'background' or 'foreground'.")
     if not math.isfinite(hold_seconds) or not 0.04 <= hold_seconds <= 0.2:
         raise WindowInputError("Click hold duration is outside the permitted range.")
 
     try:
+        import win32api
         import win32con
         import win32gui
     except ImportError as exc:  # pragma: no cover - Windows-only runtime
@@ -94,21 +99,51 @@ def post_click(
     if not (2 <= client_x < client_width - 2 and 2 <= client_y < client_height - 2):
         raise WindowInputError(f"Click rejected: mapped point is outside the safe client area; {geometry}")
 
-    lparam = ((client_y & 0xFFFF) << 16) | (client_x & 0xFFFF)
-    down_posted = False
-    try:
-        win32gui.PostMessage(hwnd, win32con.WM_MOUSEMOVE, 0, lparam)
-        win32gui.PostMessage(hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lparam)
-        down_posted = True
-        time.sleep(hold_seconds)
-    except Exception as exc:
-        raise WindowInputError(f"Windows rejected the background click: {exc}") from exc
-    finally:
-        if down_posted:
-            try:
-                win32gui.PostMessage(hwnd, win32con.WM_LBUTTONUP, 0, lparam)
-            except Exception as exc:
-                raise WindowInputError(f"Could not release the background mouse button: {exc}") from exc
+    if input_mode == "background":
+        lparam = ((client_y & 0xFFFF) << 16) | (client_x & 0xFFFF)
+        down_posted = False
+        try:
+            win32gui.PostMessage(hwnd, win32con.WM_MOUSEMOVE, 0, lparam)
+            win32gui.PostMessage(hwnd, win32con.WM_LBUTTONDOWN, win32con.MK_LBUTTON, lparam)
+            down_posted = True
+            time.sleep(hold_seconds)
+        except Exception as exc:
+            raise WindowInputError(f"Windows rejected the background click: {exc}") from exc
+        finally:
+            if down_posted:
+                try:
+                    win32gui.PostMessage(hwnd, win32con.WM_LBUTTONUP, 0, lparam)
+                except Exception as exc:
+                    raise WindowInputError(f"Could not release the background mouse button: {exc}") from exc
+        delivery = "posted_to_window_not_foregrounded"
+    else:
+        button_down = False
+        try:
+            win32gui.SetForegroundWindow(hwnd)
+            time.sleep(0.1)
+            if win32gui.GetForegroundWindow() != hwnd:
+                raise WindowInputError(
+                    "Could not focus the game window; foreground input was not sent."
+                )
+            win32api.SetCursorPos((screen_x, screen_y))
+            if tuple(win32api.GetCursorPos()) != (screen_x, screen_y):
+                raise WindowInputError(
+                    "Windows did not move the pointer to the calibrated click target."
+                )
+            button_down = True
+            win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
+            time.sleep(hold_seconds)
+        except WindowInputError:
+            raise
+        except Exception as exc:
+            raise WindowInputError(f"Windows rejected the foreground click: {exc}") from exc
+        finally:
+            if button_down:
+                try:
+                    win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+                except Exception as exc:
+                    raise WindowInputError(f"Could not release the foreground mouse button: {exc}") from exc
+        delivery = "sent_to_foreground_window"
 
     return {
         "window_title": target["title"],
@@ -123,7 +158,8 @@ def post_click(
         "client_rect": list(client_rect),
         "dpi_awareness": getattr(__import__("rok_governor.window_capture", fromlist=["DPI_AWARENESS"]), "DPI_AWARENESS", "unknown"),
         "sent_at": time.time(),
-        "delivery": "posted_to_window_not_foregrounded",
+        "input_mode": input_mode,
+        "delivery": delivery,
     }
 
 
@@ -131,6 +167,7 @@ def execute_safe_actions(
     title_filter: str,
     command: dict[str, Any],
     *,
+    input_mode: str = "background",
     minimum_confidence: float = 0.88,
 ) -> list[dict[str, Any]]:
     """Execute one allow-listed low-risk click from a fresh Gemini assessment."""
@@ -177,6 +214,7 @@ def execute_safe_actions(
         x_normalized=action.get("x"),
         y_normalized=action.get("y"),
         screenshot_size=command.get("screenshot_size"),
+        input_mode=input_mode,
     )
     result["purpose"] = purpose.strip()
     return [result]

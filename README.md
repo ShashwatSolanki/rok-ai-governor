@@ -1,6 +1,6 @@
 # RoK AI Governor
 
-A Gemini-powered secondary-account governor for Rise of Kingdoms. It observes the selected PC game window, reasons about the visible account state, and can dispatch a tightly bounded set of low-risk background clicks without taking focus away from other apps. It does not inspect game memory, modify the client, or connect to game services.
+A Gemini-powered secondary-account governor for Rise of Kingdoms. It observes the selected PC game window, reasons about the visible account state, and can dispatch a tightly bounded set of low-risk clicks. Background input is the default; foreground input is available for clients that ignore background window messages. It does not inspect game memory, modify the client, or connect to game services.
 
 > **Automation scope:** unattended input is limited to visible, low-risk routine actions (screen inspection/navigation and gathering starts) with explicit Gemini coordinates, a confidence threshold, an allow-list, idempotency, and an execution audit. Purchases, gems, rare items, upgrades, troop training, text entry, and other higher-risk actions are not automated. Check the game's current terms before using third-party tools alongside your account.
 
@@ -14,7 +14,8 @@ A Gemini-powered secondary-account governor for Rise of Kingdoms. It observes th
 - Save observations as JSON for later review.
 - Keep Gemini optional: local OCR works without an API key.
 - Ask Gemini to produce structured action commands with visible targets, preconditions, one normalized click target per screenshot, risk, confidence, and verification criteria.
-- Dispatch at most one eligible click per Gemini cycle through background window messages (no desktop-wide mouse movement and no foreground activation); re-capture and compare the live screen immediately before dispatch.
+- Dispatch at most one eligible click per Gemini cycle through the configured input mode; re-capture and compare the live screen immediately before dispatch.
+- Optionally use foreground mouse input for game clients that ignore background messages. This mode focuses the game and moves the pointer, and remains behind an explicit `--input-mode foreground` option.
 - Persist command proposals and an idempotent execution audit in SQLite; ask Gemini to visually verify posted actions on the next strategy cycle.
 
 ## Requirements
@@ -105,6 +106,9 @@ Useful overrides:
 python -m rok_governor run --title "万国覚醒" --gemini-interval 300 --heartbeat 45
 python -m rok_governor run --title "万国覚醒" --duration 3600
 
+# Use real foreground mouse input for a client that ignores background messages
+python -m rok_governor run --title "万国覚醒" --input-mode foreground
+
 # Disable game input while keeping Gemini monitoring enabled
 python -m rok_governor run --title "万国覚醒" --observe-only
 ```
@@ -161,7 +165,9 @@ python -m rok_governor command-done 1 --status dismissed
 
 Commands without eligible input actions remain in this queue for manual review. The unattended controller supports only one explicit left-click on a visible control per Gemini assessment, limited to inspect_screen, open_menu, open_academy (navigation only), select_tab, and start_gathering, with Gemini confidence of at least 0.88 and a low-risk label. Immediately before dispatch, it captures the window again and skips the click if the screen changed by more than 2% from the screenshot Gemini assessed. Each command fingerprint is reserved before dispatch so an identical proposal cannot be replayed automatically. Every attempt is logged in SQLite. A post-action screenshot and verification criterion are saved; the next Gemini cycle reviews the current screen and records verified, failed, or uncertain. The governor waits for that review cycle before dispatching another click. Coordinates are mapped from the exact decision-screenshot dimensions into the current Win32 window rectangle and then into client coordinates, with DPI-awareness and geometry recorded in each successful attempt. Edge checks use the actual client-area bounds instead of a fixed normalized inset, so visible controls near the top/side are not rejected solely for being near the screenshot edge. Blocked attempts retain the proposed target, coordinates, and geometry/rejection reason in the audit. Opening the Academy is navigation only; starting research remains excluded from unattended execution. A posted Windows message is never treated as proof the game accepted the click.
 
-Background input is best-effort: some game/emulator renderers ignore Windows background mouse messages. In that case the governor records the failure and does not fall back to foreground/desktop clicks. Keep the game window restored (it may sit behind other windows); minimised GPU rendering can produce stale or blank captures. Gemini calls use API quota and send screenshots to Google. The first unattended run should be watched closely while you confirm that your specific client accepts background input.
+The default `background` mode posts input messages without moving your mouse or changing focus. Some game clients ignore those messages. In that case, opt in to `--input-mode foreground`; it focuses the game and moves the physical pointer to deliver the click. Run foreground mode only when you are comfortable with the game taking focus. Captures try both Win32 `PrintWindow` modes; if both fail, an on-screen capture is used only while the selected game window is foreground, so the monitor does not mistake another app's pixels for the game.
+
+Background input is best-effort: some game/emulator renderers ignore Windows background mouse messages. In that case the governor records the failure and never silently falls back to foreground input. Keep the game window restored; minimised GPU rendering can produce stale or blank captures. Gemini calls use API quota and send screenshots to Google. The first unattended run should be watched closely while you confirm that your specific client accepts the selected input mode.
 
 ## Project layout
 

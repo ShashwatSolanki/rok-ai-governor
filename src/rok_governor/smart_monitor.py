@@ -15,7 +15,12 @@ from PIL import Image
 
 from .account_store import AccountStore
 from .ocr import analyse_image, save_observation
-from .window_capture import capture_window, capture_window_image, save_window_image
+from .window_capture import (
+    capture_window,
+    capture_window_image,
+    focus_window,
+    save_window_image,
+)
 
 
 def _frame_signature(frame: str | Path | Image.Image) -> np.ndarray:
@@ -50,6 +55,7 @@ def _write_runtime_status(
     consecutive_failures: int = 0,
     observation_count: int = 0,
     automation_enabled: bool = False,
+    input_mode: str = "background",
 ) -> Path:
     """Atomically publish a small health snapshot beside the local database."""
     path = Path(database).with_name("runtime_status.json")
@@ -57,7 +63,8 @@ def _write_runtime_status(
     payload = {
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "state": state,
-        "mode": "background_automation" if automation_enabled else "observe_only",
+        "mode": f"{input_mode}_automation" if automation_enabled else "observe_only",
+        "input_mode": input_mode,
         "window_title": title,
         "started_at": started_at,
         "last_capture_at": last_capture_at,
@@ -100,6 +107,7 @@ def run_smart_monitor(
     gemini_interval: float = 180.0,
     gemini_model: str | None = None,
     automation_enabled: bool = True,
+    input_mode: str = "background",
 ) -> int:
     """Observe the game continuously; OCR is supporting evidence, Gemini is independent.
 
@@ -117,6 +125,8 @@ def run_smart_monitor(
         raise ValueError("--heartbeat must be >= --sample-interval.")
     if gemini_interval <= 0:
         raise ValueError("--gemini-interval must be positive.")
+    if input_mode not in {"background", "foreground"}:
+        raise ValueError("--input-mode must be 'background' or 'foreground'.")
 
     store = AccountStore(database)
     started = time.monotonic()
@@ -139,18 +149,20 @@ def run_smart_monitor(
         f"Smart monitoring '{title}' every {sample_interval:g}s; "
         f"OCR on change (>{change_threshold:.1%}) or every {heartbeat:g}s. "
         + ("Gemini strategy enabled; " if gemini_enabled else "")
-        + ("Background input enabled; " if automation_enabled and gemini_enabled else "Observe-only; ")
+        + (f"{input_mode.capitalize()} input enabled; " if automation_enabled and gemini_enabled else "Observe-only; ")
         + "Ctrl+C to stop.",
         flush=True,
     )
 
-    _write_runtime_status(database, state="starting", title=title, started_at=session_started_at, automation_enabled=automation_enabled and gemini_enabled)
+    _write_runtime_status(database, state="starting", title=title, started_at=session_started_at, automation_enabled=automation_enabled and gemini_enabled, input_mode=input_mode)
     try:
+        if input_mode == "foreground":
+            focus_window(title)
         while True:
             loop_started = time.monotonic()
             frame = capture_window_image(title)
             last_capture_at = datetime.now(timezone.utc).isoformat()
-            _write_runtime_status(database, state="running", title=title, started_at=session_started_at, last_capture_at=last_capture_at, last_ocr_at=last_ocr_at, last_gemini_at=last_gemini_at, last_error=runtime_error, observation_count=observation_number, automation_enabled=automation_enabled and gemini_enabled)
+            _write_runtime_status(database, state="running", title=title, started_at=session_started_at, last_capture_at=last_capture_at, last_ocr_at=last_ocr_at, last_gemini_at=last_gemini_at, last_error=runtime_error, observation_count=observation_number, automation_enabled=automation_enabled and gemini_enabled, input_mode=input_mode)
             screenshot: Path | None = None
             keep_screenshot = False
             try:
@@ -304,7 +316,9 @@ def run_smart_monitor(
                             if not execution_store.claim(execution_command):
                                 continue
                             try:
-                                sent = execute_safe_actions(title, execution_command)
+                                sent = execute_safe_actions(
+                                    title, execution_command, input_mode=input_mode
+                                )
                                 execution_store.finish(
                                     execution_command, "posted",
                                     {"input_results": sent, "decision_screenshot": str(screenshot),
@@ -325,7 +339,7 @@ def run_smart_monitor(
                                     )
                                     keep_screenshot = True
                                     print(
-                                        f"One background click posted for '{proposed.get('title')}'; "
+                                        f"One {input_mode} click sent for '{proposed.get('title')}'; "
                                         f"post-action frame saved to {verification_frame}. "
                                         "Game acceptance is not yet verified.",
                                         flush=True,
@@ -340,7 +354,7 @@ def run_smart_monitor(
                                          "capture_error": str(capture_exc)},
                                     )
                                     print(
-                                        f"Background input was posted for '{proposed.get('title')}', "
+                                        f"{input_mode.capitalize()} input was sent for '{proposed.get('title')}', "
                                         f"but post-action capture failed: {capture_exc}",
                                         flush=True,
                                     )
@@ -388,7 +402,7 @@ def run_smart_monitor(
                         )
                         next_gemini_at = time.monotonic() + delay
                         runtime_error = f"Gemini {type(exc).__name__}: {exc}"
-                        _write_runtime_status(database, state="degraded", title=title, started_at=session_started_at, last_capture_at=last_capture_at, last_ocr_at=last_ocr_at, last_gemini_at=last_gemini_at, last_error=runtime_error, consecutive_failures=gemini_failures, observation_count=observation_number, automation_enabled=automation_enabled and gemini_enabled)
+                        _write_runtime_status(database, state="degraded", title=title, started_at=session_started_at, last_capture_at=last_capture_at, last_ocr_at=last_ocr_at, last_gemini_at=last_gemini_at, last_error=runtime_error, consecutive_failures=gemini_failures, observation_count=observation_number, automation_enabled=automation_enabled and gemini_enabled, input_mode=input_mode)
                         print(
                             f"Gemini advisor unavailable ({type(exc).__name__}: {exc}); "
                             f"retrying in {delay:g}s (failures: {gemini_failures}).",
@@ -399,7 +413,7 @@ def run_smart_monitor(
                     screenshot.unlink(missing_ok=True)
             if keep_screenshot:
                 _prune_screenshots(screenshot_dir)
-            _write_runtime_status(database, state="running" if runtime_error is None else "degraded", title=title, started_at=session_started_at, last_capture_at=last_capture_at, last_ocr_at=last_ocr_at, last_gemini_at=last_gemini_at, last_error=runtime_error, consecutive_failures=gemini_failures, observation_count=observation_number, automation_enabled=automation_enabled and gemini_enabled)
+            _write_runtime_status(database, state="running" if runtime_error is None else "degraded", title=title, started_at=session_started_at, last_capture_at=last_capture_at, last_ocr_at=last_ocr_at, last_gemini_at=last_gemini_at, last_error=runtime_error, consecutive_failures=gemini_failures, observation_count=observation_number, automation_enabled=automation_enabled and gemini_enabled, input_mode=input_mode)
 
             if duration and time.monotonic() - started >= duration:
                 break
@@ -409,7 +423,7 @@ def run_smart_monitor(
     except KeyboardInterrupt:
         print("\nSmart monitor stopped.", flush=True)
 
-    _write_runtime_status(database, state="stopped", title=title, started_at=session_started_at, last_capture_at=last_capture_at, last_ocr_at=last_ocr_at, last_gemini_at=last_gemini_at, last_error=runtime_error, consecutive_failures=gemini_failures, observation_count=observation_number, automation_enabled=automation_enabled and gemini_enabled)
+    _write_runtime_status(database, state="stopped", title=title, started_at=session_started_at, last_capture_at=last_capture_at, last_ocr_at=last_ocr_at, last_gemini_at=last_gemini_at, last_error=runtime_error, consecutive_failures=gemini_failures, observation_count=observation_number, automation_enabled=automation_enabled and gemini_enabled, input_mode=input_mode)
     print(
         f"Stopped. New OCR observations: {observation_number}; "
         f"total history: {store.observation_count()}.",
@@ -434,6 +448,7 @@ def run_resilient_monitor(
     retry_delay: float = 5.0,
     max_retry_delay: float = 60.0,
     automation_enabled: bool = True,
+    input_mode: str = "background",
 ) -> int:
     """Run the Gemini governor and recover from transient failures.
 
@@ -443,6 +458,8 @@ def run_resilient_monitor(
     """
     if retry_delay <= 0 or max_retry_delay < retry_delay:
         raise ValueError("Retry delays must be positive and max_retry_delay >= retry_delay.")
+    if input_mode not in {"background", "foreground"}:
+        raise ValueError("--input-mode must be 'background' or 'foreground'.")
     from dotenv import load_dotenv
 
     load_dotenv()
@@ -452,7 +469,11 @@ def run_resilient_monitor(
     failures = 0
     print(
         "RoK Governor supervisor started. Gemini strategy is enabled; "
-        + ("bounded background input is enabled. " if automation_enabled else "observe-only mode is enabled. ")
+        + (
+            f"bounded {input_mode} input is enabled. "
+            + ("It can focus the game and move the pointer. " if input_mode == "foreground" and automation_enabled else "")
+            if automation_enabled else "observe-only mode is enabled. "
+        )
         + "Press Ctrl+C to stop.",
         flush=True,
     )
@@ -477,6 +498,7 @@ def run_resilient_monitor(
                 gemini_interval=gemini_interval,
                 gemini_model=gemini_model,
                 automation_enabled=automation_enabled,
+                input_mode=input_mode,
             )
             return 0
         except KeyboardInterrupt:
@@ -495,6 +517,7 @@ def run_resilient_monitor(
                 consecutive_failures=failures,
                 observation_count=previous_health.get("observations_this_session", 0),
                 automation_enabled=automation_enabled,
+                input_mode=input_mode,
             )
             print("\\nGovernor stopped by user.", flush=True)
             return 0
@@ -516,6 +539,7 @@ def run_resilient_monitor(
                 consecutive_failures=failures,
                 observation_count=previous_health.get("observations_this_session", 0),
                 automation_enabled=automation_enabled,
+                input_mode=input_mode,
             )
             print(
                 f"Monitor cycle failed ({type(exc).__name__}: {exc}). "

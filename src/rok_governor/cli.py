@@ -97,6 +97,10 @@ def build_parser() -> argparse.ArgumentParser:
                               help="Minimum seconds between Gemini strategy requests.")
     smart_parser.add_argument("--gemini-model", default=None)
     smart_parser.add_argument("--observe-only", action="store_true", help="Disable all game input; monitor and advise only.")
+    smart_parser.add_argument(
+        "--input-mode", choices=("background", "foreground"), default="background",
+        help="Input delivery. Foreground mode focuses the game and moves the mouse.",
+    )
 
     run_parser = subparsers.add_parser(
         "run", help="Run the resilient Gemini-powered background governor."
@@ -117,6 +121,10 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--retry-delay", type=float, default=5.0)
     run_parser.add_argument("--max-retry-delay", type=float, default=60.0)
     run_parser.add_argument("--observe-only", action="store_true", help="Disable all game input; monitor and advise only.")
+    run_parser.add_argument(
+        "--input-mode", choices=("background", "foreground"), default="background",
+        help="Input delivery. Foreground mode focuses the game and moves the mouse.",
+    )
 
     advise_parser = subparsers.add_parser(
         "advise", help="Capture the current game screen and ask Gemini what to do next."
@@ -394,6 +402,7 @@ def main() -> int:
             return 1
         print(f"State: {health.get('state', 'unknown')}")
         print(f"Mode: {health.get('mode', 'unknown')}")
+        print(f"Input mode: {health.get('input_mode', 'background')}")
         print(f"Game window: {health.get('window_title', 'unknown')}")
         heartbeat = health.get("updated_at")
         print(f"Last heartbeat: {heartbeat or 'never'}")
@@ -493,6 +502,7 @@ def main() -> int:
             gemini_interval=args.gemini_interval,
             gemini_model=args.gemini_model,
             automation_enabled=not args.observe_only,
+            input_mode=args.input_mode,
         )
         return 0
 
@@ -515,6 +525,7 @@ def main() -> int:
             retry_delay=args.retry_delay,
             max_retry_delay=args.max_retry_delay,
             automation_enabled=not args.observe_only,
+            input_mode=args.input_mode,
         )
 
     if args.command == "analyze":

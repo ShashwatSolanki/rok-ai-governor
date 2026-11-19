@@ -11,6 +11,7 @@ Without this, Windows can virtualize coordinates and dimensions (for example,
 """
 
 import ctypes
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -61,6 +62,7 @@ from PIL import Image
 
 try:
     import win32gui
+    import win32process
     import win32ui
 except ImportError as exc:  # pragma: no cover - platform-specific dependency
     raise RuntimeError(
@@ -111,7 +113,7 @@ def find_child_windows(parent_hwnd: int) -> list[dict]:
             client_rect = win32gui.GetClientRect(hwnd)
             class_name = win32gui.GetClassName(hwnd)
             title = win32gui.GetWindowText(hwnd).strip()
-            _, process_id = win32gui.GetWindowThreadProcessId(hwnd)
+            _, process_id = win32process.GetWindowThreadProcessId(hwnd)
         except win32gui.error:
             return
         left, top, right, bottom = rect
@@ -130,6 +132,33 @@ def find_child_windows(parent_hwnd: int) -> list[dict]:
 
     win32gui.EnumChildWindows(parent_hwnd, visit, None)
     return matches
+
+
+def focus_window(title_filter: str) -> dict:
+    """Focus one unminimised window after an explicit foreground-mode request."""
+    candidates = find_windows(title_filter)
+    if len(candidates) != 1:
+        raise RuntimeError(
+            f"Foreground input needs exactly one matching window; found {len(candidates)}. "
+            "Use a more specific --title."
+        )
+    target = candidates[0]
+    if target["minimized"]:
+        raise RuntimeError("The selected game window is minimised; restore it before foreground automation.")
+    hwnd = target["hwnd"]
+    try:
+        win32gui.SetForegroundWindow(hwnd)
+        time.sleep(0.1)
+        foreground = win32gui.GetForegroundWindow()
+        if foreground != hwnd:
+            foreground = win32gui.GetAncestor(foreground, win32gui.GA_ROOT)
+        if foreground != hwnd:
+            raise RuntimeError(
+                "Windows did not grant focus to the game window. Click the game window once, then retry."
+            )
+    except win32gui.error as exc:
+        raise RuntimeError(f"Could not focus the game window: {exc}") from exc
+    return target
 
 def capture_window(
     title_filter: str = "BlueStacks",
@@ -171,25 +200,55 @@ def capture_window_image(title_filter: str = "BlueStacks") -> Image.Image:
         print_window = ctypes.windll.user32.PrintWindow
         print_window.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint]
         print_window.restype = ctypes.c_bool
-        result = print_window(
-            ctypes.c_void_p(hwnd),
-            ctypes.c_void_p(memory_dc.GetSafeHdc()),
-            ctypes.c_uint(0x00000002),  # PW_RENDERFULLCONTENT
-        )
-        if not result:
-            raise RuntimeError(
-                "Windows could not render this window off-screen. "
-                "Try leaving the game window visible behind your other apps."
+        # Some renderers support standard PrintWindow but reject the extended
+        # PW_RENDERFULLCONTENT flag, so try both modes against the same DC.
+        result = False
+        for flags in (0x00000002, 0):
+            result = print_window(
+                ctypes.c_void_p(hwnd),
+                ctypes.c_void_p(memory_dc.GetSafeHdc()),
+                ctypes.c_uint(flags),
             )
+            if result:
+                break
+        if not result:
+            # DirectX clients sometimes reject both PrintWindow modes. A screen
+            # grab is safe only when the selected window is already foreground;
+            # otherwise it could silently record another app covering the game.
+            if win32gui.GetForegroundWindow() != hwnd:
+                raise RuntimeError(
+                    "Windows could not render this game off-screen. Bring the game to the "
+                    "foreground or use a client that supports background capture."
+                )
+            try:
+                import mss
 
-        info = bitmap.GetInfo()
-        bits = bitmap.GetBitmapBits(True)
-        # GetBitmapBits is already top-down for this capture path; flipping it
-        # vertically would turn the game image upside down.
-        image = Image.frombuffer(
-            "RGB", (info["bmWidth"], info["bmHeight"]), bits,
-            "raw", "BGRX", 0, 1
-        )
+                with mss.MSS() as screen_capture:
+                    shot = screen_capture.grab({
+                        "left": left,
+                        "top": top,
+                        "width": width,
+                        "height": height,
+                    })
+                image = Image.frombytes("RGB", shot.size, shot.rgb)
+            except Exception as exc:
+                raise RuntimeError(
+                    f"PrintWindow failed and foreground screen capture was unavailable: {exc}"
+                ) from exc
+            extrema = image.convert("L").getextrema()
+            if extrema[1] <= 3:
+                raise RuntimeError("The foreground game capture is blank/black.")
+            return image.copy()
+
+        if result:
+            info = bitmap.GetInfo()
+            bits = bitmap.GetBitmapBits(True)
+            # GetBitmapBits is already top-down for this capture path; flipping it
+            # vertically would turn the game image upside down.
+            image = Image.frombuffer(
+                "RGB", (info["bmWidth"], info["bmHeight"]), bits,
+                "raw", "BGRX", 0, 1
+            )
 
         extrema = image.convert("L").getextrema()
         if extrema[1] <= 3:
