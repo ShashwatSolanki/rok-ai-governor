@@ -239,6 +239,34 @@ def run_smart_monitor(
                                 continue
                             if not proposed.get("preconditions") or not proposed.get("verification"):
                                 continue
+
+                            # Gemini may take several seconds to answer. Re-capture
+                            # immediately before dispatch and reject stale coordinates
+                            # if the game screen changed materially in the meantime.
+                            fresh_frame = None
+                            try:
+                                fresh_frame = capture_window(title, screenshot_dir)
+                                freshness_change = _change_ratio(
+                                    signature, _frame_signature(fresh_frame)
+                                )
+                                if freshness_change > 0.02:
+                                    print(
+                                        f"Automation skipped '{proposed.get('title')}': "
+                                        f"screen changed {freshness_change:.1%} while Gemini was thinking.",
+                                        flush=True,
+                                    )
+                                    continue
+                            except Exception as preflight_exc:
+                                print(
+                                    f"Automation preflight failed; no input sent: "
+                                    f"{type(preflight_exc).__name__}: {preflight_exc}",
+                                    flush=True,
+                                )
+                                break
+                            finally:
+                                if fresh_frame is not None:
+                                    fresh_frame.unlink(missing_ok=True)
+
                             if not execution_store.claim(proposed):
                                 continue
                             try:
@@ -257,9 +285,9 @@ def run_smart_monitor(
                                     )
                                     keep_screenshot = True
                                     print(
-                                        f"Background input posted for '{proposed.get('title')}'; "
+                                        f"One background click posted for '{proposed.get('title')}'; "
                                         f"post-action frame saved to {verification_frame}. "
-                                        "Outcome is not yet verified.",
+                                        "Game acceptance is not yet verified.",
                                         flush=True,
                                     )
                                 except Exception as capture_exc:
