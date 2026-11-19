@@ -10,4 +10,6 @@ screenshots/*
 !screenshots/.gitkeep
 observations/*
 !observations/.gitkeep
+data/*
+!data/.gitkeep
 *.log
