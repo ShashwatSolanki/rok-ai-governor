@@ -2,7 +2,7 @@
 
 Gemini is the decision-maker. Local OCR and account history are supplied as
 evidence/context only; this module contains no deterministic farming policy.
-Recommendations remain advisory and must be checked in the game.
+Gemini emits structured candidate actions; the local controller enforces a separate bounded execution policy.
 """
 from __future__ import annotations
 
@@ -138,8 +138,8 @@ def advise_with_gemini(
             "Return a small prioritized queue, not generic filler. It is acceptable to return no actions.",
             "Before recommending an action, compare it with existing_pending_actions and recent_task_history. Do not create a differently worded duplicate of an already-pending goal. Do not repeat completed or dismissed goals unless current screenshot evidence shows a genuinely new instance or changed need; explain why it is new.",
             "Recommendations and commands are proposals only; never claim an action has been executed.",
-            "For each recommended action that can be expressed as a concrete in-game operation, also emit a structured command. Commands must be declarative data, never code, shell commands, macros, coordinates, or key sequences.",
-            "Each command must state exact visible target, preconditions, ordered player-performed steps, a way to verify the result, rationale, risk, and confidence. If target or prerequisites are not visible, emit inspect_screen instead of guessing.",
+            "For each recommended action that can be expressed as a concrete in-game operation, also emit a structured command. Commands must be declarative data, never code, shell commands, macros, or key sequences.",
+            "Each command must state exact visible target, preconditions, ordered steps, a way to verify the result, rationale, risk, and confidence. If target or prerequisites are not visible, emit inspect_screen instead of guessing.",
             "Do not include commands to spend gems, buy bundles, use rare items, or make irreversible account changes. For those, explain the decision in advice only and mark that human judgment is required.",
             "For low-risk routine actions only, provide input_actions as explicit click targets in normalized screenshot coordinates 0..1000 (0,0 top-left). Use 1-3 clicks maximum, and only when the exact target is clearly visible. Every click must have a purpose. For anything uncertain or involving resource costs, omit input_actions. Never emit keyboard actions, text entry, arbitrary coordinates unrelated to a visible control, purchases, gems, rare items, upgrades, training, or irreversible actions. The local governor independently enforces an allow-list and confidence threshold before any click. A click is not proof of success; require a fresh screenshot to assess the outcome.",
             "For each supplied pending task, return one task_review only when the current screenshot provides relevant evidence; otherwise use uncertain with an explanation.",
@@ -195,10 +195,10 @@ def advise_with_gemini(
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "provider": "Google Gemini",
         "model": selected_model,
-        "mode": "gemini_advisory",
+        "mode": "gemini_strategy",
         "source_screenshot": str(path),
         "advice": advice,
-        "execution_status": "not_executed_manual_review_required",
+        "execution_status": "candidate_actions_require_local_policy_validation",
     }
 
 
