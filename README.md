@@ -13,9 +13,9 @@ A Gemini-powered secondary-account governor for Rise of Kingdoms. It observes th
 - Optionally send a screenshot and OCR hints to Gemini for structured visual interpretation.
 - Save observations as JSON for later review.
 - Keep Gemini optional: local OCR works without an API key.
-- Ask Gemini to produce structured action commands with visible targets, preconditions, normalized click coordinates, risk, confidence, and verification criteria.
-- Optionally dispatch at most one eligible command per Gemini cycle through background window messages (no desktop-wide mouse movement and no foreground activation).
-- Persist command proposals and an idempotent execution audit in SQLite.
+- Ask Gemini to produce structured action commands with visible targets, preconditions, one normalized click target per screenshot, risk, confidence, and verification criteria.
+- Dispatch at most one eligible click per Gemini cycle through background window messages (no desktop-wide mouse movement and no foreground activation); re-capture and compare the live screen immediately before dispatch.
+- Persist command proposals and an idempotent execution audit in SQLite; ask Gemini to visually verify posted actions on the next strategy cycle.
 
 ## Requirements
 
@@ -121,13 +121,13 @@ Inspect recent background input attempts:
 python -m rok_governor automation-log
 ```
 
-The health command reads `data/runtime_status.json` and reports heartbeat freshness, the last successful capture, OCR and Gemini operations, pending/completed recommendation counts, current monitor state, and the latest error. A heartbeat older than three minutes is flagged as possibly stale. It is a local diagnostic snapshot; if the process is killed abruptly, its state may remain at the last recorded heartbeat rather than changing to `stopped`.
+The health command reads `data/runtime_status.json` and reports heartbeat freshness, the last successful capture, OCR and Gemini operations, whether background automation is enabled, pending/completed recommendation counts, current monitor state, and the latest error. A heartbeat older than three minutes is flagged as possibly stale. It is a local diagnostic snapshot; if the process is killed abruptly, its state may remain at the last recorded heartbeat rather than changing to `stopped`.
 
 ### Structured command queue
 
 Gemini now emits a second, more operational output alongside strategic recommendations: structured command proposals. Each proposal includes an action type, visible target, parameters, preconditions, ordered steps, risk, confidence, rationale, and a verification check. The background `run` process saves these proposals to the local SQLite database.
 
-List commands awaiting your action:
+List Gemini's structured action proposals (eligible low-risk proposals may be dispatched automatically):
 
 ```powershell
 python -m rok_governor commands
@@ -139,7 +139,7 @@ Show completed or dismissed entries:
 python -m rok_governor commands --status all
 ```
 
-After you perform a command in the game, record it:
+After you manually perform or visually confirm a command, record it:
 
 ```powershell
 python -m rok_governor command-done 1
@@ -151,7 +151,7 @@ Dismiss a proposal instead:
 python -m rok_governor command-done 1 --status dismissed
 ```
 
-Commands without eligible input actions remain in this queue for manual review. The unattended controller supports only explicit left-clicks on visible controls, limited to inspect_screen, open_menu, select_tab, and start_gathering, with Gemini confidence of at least 0.88 and a low-risk label. Each command fingerprint is reserved before dispatch so a failed or repeated Gemini response cannot replay it automatically. Every attempted action is logged in SQLite. A post-action screenshot is saved, but a posted Windows message is not proof the game accepted the click; the next visual assessment must confirm the result.
+Commands without eligible input actions remain in this queue for manual review. The unattended controller supports only one explicit left-click on a visible control per Gemini assessment, limited to inspect_screen, open_menu, select_tab, and start_gathering, with Gemini confidence of at least 0.88 and a low-risk label. Immediately before dispatch, it captures the window again and skips the click if the screen changed by more than 2% from the screenshot Gemini assessed. Each command fingerprint is reserved before dispatch so an identical proposal cannot be replayed automatically. Every attempt is logged in SQLite. A post-action screenshot and verification criterion are saved; the next Gemini cycle reviews the current screen and records verified, failed, or uncertain. A posted Windows message is never treated as proof the game accepted the click.
 
 Background input is best-effort: some game/emulator renderers ignore Windows background mouse messages. In that case the governor records the failure and does not fall back to foreground/desktop clicks. Keep the game window restored (it may sit behind other windows); minimised GPU rendering can produce stale or blank captures. Gemini calls use API quota and send screenshots to Google. The first unattended run should be watched closely while you confirm that your specific client accepts background input.
 
