@@ -135,7 +135,13 @@ def capture_window(
     title_filter: str = "BlueStacks",
     output_dir: str | Path = "screenshots",
 ) -> Path:
-    """Capture a matching window using Win32 PrintWindow, without desktop input."""
+    """Capture a matching window to PNG using Win32 PrintWindow."""
+    image = capture_window_image(title_filter)
+    return save_window_image(image, output_dir)
+
+
+def capture_window_image(title_filter: str = "BlueStacks") -> Image.Image:
+    """Capture a matching window into memory, without writing a temporary PNG."""
     candidates = find_windows(title_filter)
     if not candidates:
         raise RuntimeError(
@@ -193,14 +199,19 @@ def capture_window(
                 "visible behind other windows and try again."
             )
 
-        destination = Path(output_dir)
-        destination.mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        output_path = destination / f"window_{timestamp}.png"
-        image.save(output_path, format="PNG")
-        return output_path
+        return image.copy()
     finally:
         win32gui.DeleteObject(bitmap.GetHandle())
         memory_dc.DeleteDC()
         source_dc.DeleteDC()
         win32gui.ReleaseDC(hwnd, window_dc)
+
+
+def save_window_image(image: Image.Image, output_dir: str | Path = "screenshots") -> Path:
+    """Persist a captured frame when it is needed for OCR or diagnostics."""
+    destination = Path(output_dir)
+    destination.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    output_path = destination / f"window_{timestamp}.png"
+    image.save(output_path, format="PNG")
+    return output_path

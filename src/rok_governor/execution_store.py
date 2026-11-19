@@ -8,12 +8,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .sqlite_utils import connect_database
+
 
 class ExecutionStore:
     def __init__(self, database: str | Path = "data/account_history.sqlite3"):
         self.path = Path(database)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(self.path) as db:
+        with connect_database(self.path) as db:
             db.execute(
                 """CREATE TABLE IF NOT EXISTS automation_executions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -77,7 +79,7 @@ class ExecutionStore:
 
     def claim(self, command: dict[str, Any]) -> bool:
         """Atomically reserve a command; an identical command is never replayed."""
-        with sqlite3.connect(self.path) as db:
+        with connect_database(self.path) as db:
             cursor = db.execute(
                 """INSERT OR IGNORE INTO automation_executions
                    (fingerprint, command_title, action_type, status, details_json, started_at)
@@ -94,7 +96,7 @@ class ExecutionStore:
     def finish(self, command: dict[str, Any], status: str, details: dict[str, Any]) -> None:
         if status not in {"posted", "blocked", "error"}:
             raise ValueError("Invalid automation execution status.")
-        with sqlite3.connect(self.path) as db:
+        with connect_database(self.path) as db:
             db.execute(
                 """UPDATE automation_executions
                    SET status = ?, details_json = ?, finished_at = ?
@@ -109,7 +111,7 @@ class ExecutionStore:
 
     def pending_verification(self, limit: int = 10) -> list[dict[str, Any]]:
         """Return posted actions whose result has not yet been assessed by Gemini."""
-        with sqlite3.connect(self.path) as db:
+        with connect_database(self.path) as db:
             db.row_factory = sqlite3.Row
             rows = db.execute(
                 """SELECT id, command_title, action_type, details_json, started_at
@@ -134,7 +136,7 @@ class ExecutionStore:
     def record_reviews(self, result: dict[str, Any]) -> int:
         reviews = (result.get("advice") or {}).get("execution_reviews") or []
         saved = 0
-        with sqlite3.connect(self.path) as db:
+        with connect_database(self.path) as db:
             for review in reviews:
                 execution_id = review.get("execution_id")
                 assessment = str(review.get("assessment") or "uncertain").casefold()
@@ -181,7 +183,7 @@ class ExecutionStore:
 
     def automation_pause(self) -> dict[str, Any] | None:
         """Return the persistent fail-safe pause, if visual verification raised one."""
-        with sqlite3.connect(self.path) as db:
+        with connect_database(self.path) as db:
             db.row_factory = sqlite3.Row
             row = db.execute(
                 "SELECT paused, reason, updated_at FROM automation_control WHERE id = 1"
@@ -192,7 +194,7 @@ class ExecutionStore:
 
     def resume_automation(self) -> bool:
         """Clear a visual-verification pause after the operator reviews the game."""
-        with sqlite3.connect(self.path) as db:
+        with connect_database(self.path) as db:
             cursor = db.execute(
                 "UPDATE automation_control SET paused=0, reason='', updated_at=? WHERE id=1 AND paused=1",
                 (datetime.now(timezone.utc).isoformat(),),
@@ -200,7 +202,7 @@ class ExecutionStore:
             return cursor.rowcount > 0
 
     def recent(self, limit: int = 20) -> list[dict[str, Any]]:
-        with sqlite3.connect(self.path) as db:
+        with connect_database(self.path) as db:
             db.row_factory = sqlite3.Row
             rows = db.execute(
                 "SELECT * FROM automation_executions ORDER BY id DESC LIMIT ?",

@@ -15,13 +15,17 @@ from PIL import Image
 
 from .account_store import AccountStore
 from .ocr import analyse_image, save_observation
-from .window_capture import capture_window
+from .window_capture import capture_window, capture_window_image, save_window_image
 
 
-def _frame_signature(image_path: str | Path) -> np.ndarray:
+def _frame_signature(frame: str | Path | Image.Image) -> np.ndarray:
     """Create a small, blurred grayscale signature for cheap comparisons."""
-    with Image.open(image_path) as image:
+    if isinstance(frame, Image.Image):
+        image = frame
         rgb = image.convert("RGB").resize((320, 180), Image.Resampling.BILINEAR)
+    else:
+        with Image.open(frame) as image:
+            rgb = image.convert("RGB").resize((320, 180), Image.Resampling.BILINEAR)
     frame = cv2.cvtColor(np.asarray(rgb), cv2.COLOR_RGB2GRAY)
     return cv2.GaussianBlur(frame, (5, 5), 0)
 
@@ -144,12 +148,13 @@ def run_smart_monitor(
     try:
         while True:
             loop_started = time.monotonic()
-            screenshot = capture_window(title, screenshot_dir)
+            frame = capture_window_image(title)
             last_capture_at = datetime.now(timezone.utc).isoformat()
             _write_runtime_status(database, state="running", title=title, started_at=session_started_at, last_capture_at=last_capture_at, last_ocr_at=last_ocr_at, last_gemini_at=last_gemini_at, last_error=runtime_error, observation_count=observation_number, automation_enabled=automation_enabled and gemini_enabled)
+            screenshot: Path | None = None
             keep_screenshot = False
             try:
-                signature = _frame_signature(screenshot)
+                signature = _frame_signature(frame)
                 ratio = (
                     _change_ratio(previous_signature, signature)
                     if previous_signature is not None else 1.0
@@ -171,6 +176,7 @@ def run_smart_monitor(
 
                 if should_analyse:
                     try:
+                        screenshot = save_window_image(frame, screenshot_dir)
                         observation = analyse_image(screenshot, profile=profile)
                         observation["source"] = str(screenshot)
                         observation["monitor"] = {
@@ -208,6 +214,9 @@ def run_smart_monitor(
                 if gemini_enabled and time.monotonic() >= next_gemini_at:
                     try:
                         from .gemini_advisor import advise_with_gemini, save_advice
+
+                        if screenshot is None:
+                            screenshot = save_window_image(frame, screenshot_dir)
 
                         from .execution_store import ExecutionStore
                         pending_verification_before_cycle = bool(
@@ -267,9 +276,8 @@ def run_smart_monitor(
                             # Gemini may take several seconds to answer. Re-capture
                             # immediately before dispatch and reject stale coordinates
                             # if the game screen changed materially in the meantime.
-                            fresh_frame = None
                             try:
-                                fresh_frame = capture_window(title, screenshot_dir)
+                                fresh_frame = capture_window_image(title)
                                 freshness_change = _change_ratio(
                                     signature, _frame_signature(fresh_frame)
                                 )
@@ -287,10 +295,6 @@ def run_smart_monitor(
                                     flush=True,
                                 )
                                 break
-                            finally:
-                                if fresh_frame is not None:
-                                    fresh_frame.unlink(missing_ok=True)
-
                             execution_command = dict(proposed)
                             with Image.open(screenshot) as decision_image:
                                 execution_command["screenshot_size"] = decision_image.size
@@ -391,7 +395,7 @@ def run_smart_monitor(
                             flush=True,
                         )
             finally:
-                if not keep_screenshot:
+                if screenshot is not None and not keep_screenshot:
                     screenshot.unlink(missing_ok=True)
             if keep_screenshot:
                 _prune_screenshots(screenshot_dir)

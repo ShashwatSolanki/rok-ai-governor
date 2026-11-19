@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .sqlite_utils import connect_database
+
 
 class TaskStore:
     """Persistent queue for Gemini recommendations; stores tasks, never executes them."""
@@ -15,7 +17,7 @@ class TaskStore:
     def __init__(self, database: str | Path = "data/account_history.sqlite3"):
         self.path = Path(database)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(self.path) as db:
+        with connect_database(self.path) as db:
             db.execute("""CREATE TABLE IF NOT EXISTS governor_tasks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 fingerprint TEXT NOT NULL UNIQUE,
@@ -47,7 +49,7 @@ class TaskStore:
         advice = result.get("advice") or {}
         now = result.get("generated_at") or datetime.now(timezone.utc).isoformat()
         processed = 0
-        with sqlite3.connect(self.path) as db:
+        with connect_database(self.path) as db:
             for item in advice.get("recommended_actions") or []:
                 action = str(item.get("action") or "").strip()
                 if not action:
@@ -82,7 +84,7 @@ class TaskStore:
         advice = result.get("advice") or {}
         now = result.get("generated_at") or datetime.now(timezone.utc).isoformat()
         saved = 0
-        with sqlite3.connect(self.path) as db:
+        with connect_database(self.path) as db:
             for review in advice.get("task_reviews") or []:
                 task_id = review.get("task_id")
                 assessment = str(review.get("assessment") or "uncertain")
@@ -115,7 +117,7 @@ class TaskStore:
         return saved
 
     def list_reviews(self) -> list[dict[str, Any]]:
-        with sqlite3.connect(self.path) as db:
+        with connect_database(self.path) as db:
             db.row_factory = sqlite3.Row
             rows = db.execute(
                 """SELECT t.id, t.action, t.priority, t.status,
@@ -140,7 +142,7 @@ class TaskStore:
             query += " WHERE status = ?"
             args = (status,)
         query += " ORDER BY CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END, last_seen DESC"
-        with sqlite3.connect(self.path) as db:
+        with connect_database(self.path) as db:
             db.row_factory = sqlite3.Row
             rows = db.execute(query, args).fetchall()
         output = []
@@ -154,6 +156,6 @@ class TaskStore:
     def set_status(self, task_id: int, status: str) -> bool:
         if status not in {"pending", "completed", "dismissed"}:
             raise ValueError("Invalid task status")
-        with sqlite3.connect(self.path) as db:
+        with connect_database(self.path) as db:
             cur = db.execute("UPDATE governor_tasks SET status = ? WHERE id = ?", (status, task_id))
             return cur.rowcount > 0

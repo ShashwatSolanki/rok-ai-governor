@@ -11,6 +11,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .sqlite_utils import connect_database
+
 
 ALLOWED_ACTION_TYPES = {
     "inspect_screen", "open_menu", "select_tab", "start_gathering",
@@ -26,7 +28,7 @@ class CommandStore:
     def __init__(self, database: str | Path = "data/account_history.sqlite3"):
         self.path = Path(database)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(self.path) as db:
+        with connect_database(self.path) as db:
             db.execute(
                 """CREATE TABLE IF NOT EXISTS governor_commands (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,7 +55,7 @@ class CommandStore:
         advice = result.get("advice") or {}
         now = result.get("generated_at") or datetime.now(timezone.utc).isoformat()
         saved = 0
-        with sqlite3.connect(self.path) as db:
+        with connect_database(self.path) as db:
             for item in advice.get("commands") or []:
                 action_type = str(item.get("action_type") or "other").strip().casefold()
                 if action_type not in ALLOWED_ACTION_TYPES:
@@ -108,7 +110,7 @@ class CommandStore:
             query += " WHERE status = ?"
             args = (status,)
         query += " ORDER BY last_seen DESC, id DESC"
-        with sqlite3.connect(self.path) as db:
+        with connect_database(self.path) as db:
             db.row_factory = sqlite3.Row
             rows = db.execute(query, args).fetchall()
         result = []
@@ -122,7 +124,7 @@ class CommandStore:
     def set_status(self, command_id: int, status: str) -> bool:
         if status not in ALLOWED_STATUSES:
             raise ValueError("Invalid command status")
-        with sqlite3.connect(self.path) as db:
+        with connect_database(self.path) as db:
             cursor = db.execute(
                 "UPDATE governor_commands SET status = ? WHERE id = ?",
                 (status, command_id),
