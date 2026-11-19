@@ -71,7 +71,10 @@ def run_smart_monitor(
     previous_signature: np.ndarray | None = None
     changed_streak = 0
     observation_number = 0
-    last_gemini = 0.0
+    next_gemini_at = 0.0
+    gemini_failures = 0
+    gemini_retry_delay = 15.0
+    gemini_max_retry_delay = 900.0
 
     print(
         f"Smart monitoring '{title}' every {sample_interval:g}s; "
@@ -85,85 +88,95 @@ def run_smart_monitor(
         while True:
             loop_started = time.monotonic()
             screenshot = capture_window(title, screenshot_dir)
-            signature = _frame_signature(screenshot)
+            keep_screenshot = False
+            try:
+                signature = _frame_signature(screenshot)
 
-            ratio = (
-                _change_ratio(previous_signature, signature)
-                if previous_signature is not None else 1.0
-            )
-            previous_signature = signature
-
-            if ratio >= change_threshold:
-                changed_streak += 1
-            else:
-                changed_streak = 0
-
-            now = time.monotonic()
-            # Debounce animated UI effects so a pulsing icon or moving background
-            # cannot force OCR on every pair of samples.
-            changed = (
-                changed_streak >= stable_frames
-                and (last_ocr == 0.0 or now - last_ocr >= 10.0)
-            )
-            heartbeat_due = last_ocr == 0.0 or now - last_ocr >= heartbeat
-            should_analyse = changed or heartbeat_due
-
-            if should_analyse:
-                observation = analyse_image(screenshot, profile=profile)
-                observation["source"] = str(screenshot)
-                observation["monitor"] = {
-                    "mode": "smart",
-                    "change_ratio": round(ratio, 5),
-                    "trigger": "visual_change" if changed else "heartbeat",
-                }
-                observation_id = store.record(observation)
-                output = save_observation(observation, output_dir)
-                observation_number += 1
-                print(
-                    f"Observation #{observation_id}: "
-                    f"screen={observation.get('screen', {}).get('type', 'unknown')} "
-                    f"trigger={observation['monitor']['trigger']} "
-                    f"change={ratio:.1%} review={observation.get('review_required')} "
-                    f"json={output}",
-                    flush=True,
+                ratio = (
+                    _change_ratio(previous_signature, signature)
+                    if previous_signature is not None else 1.0
                 )
-                last_ocr = time.monotonic()
-                changed_streak = 0
+                previous_signature = signature
 
-                if gemini_enabled and (
-                    last_gemini == 0.0 or last_ocr - last_gemini >= gemini_interval
-                ):
-                    try:
-                        from .gemini_advisor import advise_with_gemini, save_advice
+                if ratio >= change_threshold:
+                    changed_streak += 1
+                else:
+                    changed_streak = 0
 
-                        print("Requesting Gemini strategy assessment...", flush=True)
-                        advice = advise_with_gemini(
-                            screenshot,
-                            profile=profile,
-                            database=database,
-                            ocr_observation=observation,
-                            model=gemini_model,
-                        )
-                        advice_path = save_advice(advice)
-                        from .task_store import TaskStore
+                now = time.monotonic()
+                # Debounce animated UI effects so a pulsing icon or moving background
+                # cannot force OCR on every pair of samples.
+                changed = (
+                    changed_streak >= stable_frames
+                    and (last_ocr == 0.0 or now - last_ocr >= 10.0)
+                )
+                heartbeat_due = last_ocr == 0.0 or now - last_ocr >= heartbeat
+                should_analyse = changed or heartbeat_due
 
-                        synced = TaskStore(database).ingest(advice)
-                        reviews_saved = TaskStore(database).record_reviews(advice)
+                    if should_analyse:
+                        observation = analyse_image(screenshot, profile=profile)
+                        observation["source"] = str(screenshot)
+                        observation["monitor"] = {
+                            "mode": "smart",
+                            "change_ratio": round(ratio, 5),
+                            "trigger": "visual_change" if changed else "heartbeat",
+                        }
+                        observation_id = store.record(observation)
+                        output = save_observation(observation, output_dir)
+                        observation_number += 1
+                        keep_screenshot = True
                         print(
-                            f"Gemini recommendations saved: {advice_path}; "
-                            f"task queue synced ({synced} recommendation(s)); "
-                            f"visual reviews saved ({reviews_saved}).",
+                            f"Observation #{observation_id}: "
+                            f"screen={observation.get('screen', {}).get('type', 'unknown')} "
+                            f"trigger={observation['monitor']['trigger']} "
+                            f"change={ratio:.1%} review={observation.get('review_required')} "
+                            f"json={output}",
                             flush=True,
                         )
-                    except Exception as exc:
-                        print(
-                            f"Gemini advisor unavailable: {type(exc).__name__}: {exc}",
-                            flush=True,
-                        )
-                    finally:
-                        last_gemini = time.monotonic()
-            else:
-                screenshot.unlink(missing_ok=True)
+                        last_ocr = time.monotonic()
+                        changed_streak = 0
+
+                        if gemini_enabled and time.monotonic() >= next_gemini_at:
+                            try:
+                                from .gemini_advisor import advise_with_gemini, save_advice
+
+                                print("Requesting Gemini strategy assessment...", flush=True)
+                                advice = advise_with_gemini(
+                                    screenshot,
+                                    profile=profile,
+                                    database=database,
+                                    ocr_observation=observation,
+                                    model=gemini_model,
+                                )
+                                advice_path = save_advice(advice)
+                                from .task_store import TaskStore
+
+                                task_store = TaskStore(database)
+                                synced = task_store.ingest(advice)
+                                reviews_saved = task_store.record_reviews(advice)
+                                print(
+                                    f"Gemini recommendations saved: {advice_path}; "
+                                    f"task queue synced ({synced} recommendation(s)); "
+                                    f"visual reviews saved ({reviews_saved}).",
+                                    flush=True,
+                                )
+                                gemini_failures = 0
+                                next_gemini_at = time.monotonic() + gemini_interval
+                            except Exception as exc:
+                                gemini_failures += 1
+                                delay = min(
+                                    gemini_max_retry_delay,
+                                    gemini_retry_delay * (2 ** min(gemini_failures - 1, 6)),
+                                )
+                                next_gemini_at = time.monotonic() + delay
+                                print(
+                                    f"Gemini advisor unavailable ({type(exc).__name__}: {exc}); "
+                                    f"retrying in {delay:g}s (failures: {gemini_failures}).",
+                                    flush=True,
+                                )
+                finally:
+                    if not keep_screenshot:
+                        screenshot.unlink(missing_ok=True)
 
             if duration and time.monotonic() - started >= duration:
                 break
