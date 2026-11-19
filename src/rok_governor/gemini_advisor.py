@@ -76,10 +76,22 @@ ADVICE_SCHEMA = {
                 "required": ["task_id", "assessment", "visual_evidence", "confidence"],
             },
         },
+        "execution_reviews": {
+            "type": "ARRAY",
+            "items": {
+                "type": "OBJECT",
+                "properties": {
+                    "execution_id": {"type": "INTEGER"},
+                    "assessment": {"type": "STRING", "enum": ["verified", "failed", "uncertain"]},
+                    "visual_evidence": {"type": "STRING"},
+                },
+                "required": ["execution_id", "assessment", "visual_evidence"],
+            },
+        },
         "what_to_inspect_next": {"type": "ARRAY", "items": {"type": "STRING"}},
         "do_not_assume": {"type": "ARRAY", "items": {"type": "STRING"}},
     },
-    "required": ["account_summary", "current_screen", "overall_assessment", "recommended_actions", "commands", "task_reviews", "what_to_inspect_next", "do_not_assume"],
+    "required": ["account_summary", "current_screen", "overall_assessment", "recommended_actions", "commands", "task_reviews", "execution_reviews", "what_to_inspect_next", "do_not_assume"],
 }
 
 
@@ -114,9 +126,12 @@ def advise_with_gemini(
         }
         for task in pending_tasks
     ]
+    from .execution_store import ExecutionStore
+    pending_execution_reviews = ExecutionStore(database).pending_verification()
     context = {
         "known_account_state": account_history,
         "pending_tasks_to_verify": review_context,
+        "posted_actions_to_visually_verify": pending_execution_reviews,
         "existing_pending_actions": [
             {"task_id": task["id"], "category": task["category"], "action": task["action"]}
             for task in pending_tasks
@@ -146,12 +161,13 @@ def advise_with_gemini(
             "Use likely_completed only when the visible screen strongly supports that the specific task's intended result occurred. Disappearance of an icon alone may be ambiguous.",
             "Never treat a task as completed merely because it is old or not visible on this screen. Use still_pending only when the screenshot visibly shows the task remains undone.",
             "Task reviews are suggestions for human confirmation, not status changes. Do not invent task IDs.",
+            "For each posted action in posted_actions_to_visually_verify, return exactly one execution_review using its execution_id. Mark verified only when the current screenshot clearly shows the stated result; mark failed only when the screen clearly contradicts the expected result; otherwise mark uncertain. Never infer success merely because a click was posted. Cite visible evidence and do not invent IDs.",
         ],
     }
     prompt = (
         "You are the strategic farm-account governor for Rise of Kingdoms. "
         "Study the attached current game screenshot and the supplied account context. "
-        "Also compare visible evidence with pending tasks and return cautious task_reviews. "
+        "Also compare visible evidence with pending tasks and posted automation actions, returning cautious task_reviews and execution_reviews. "
         "You, Gemini, must reason about what the player should do next. Do not apply "
         "fixed reserve thresholds or hard-coded priorities. Make context-sensitive "
         "decisions from the visible game state, account progression, and stated farm "
