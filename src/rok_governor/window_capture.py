@@ -6,6 +6,7 @@ do not support this reliably. In that case this module fails loudly rather than
 silently capturing the wrong part of the desktop.
 """
 
+import ctypes
 from datetime import datetime
 from pathlib import Path
 
@@ -53,7 +54,7 @@ def capture_window(
     title_filter: str = "BlueStacks",
     output_dir: str | Path = "screenshots",
 ) -> Path:
-    """Capture a matching window using PrintWindow, without desktop input."""
+    """Capture a matching window using Win32 PrintWindow, without desktop input."""
     candidates = find_windows(title_filter)
     if not candidates:
         raise RuntimeError(
@@ -61,7 +62,6 @@ def capture_window(
             "Run 'python -m rok_governor windows' to list window titles."
         )
 
-    # Prefer the largest matching window, since emulators can expose helper windows.
     target = max(
         candidates,
         key=lambda item: (item["rect"][2] - item["rect"][0])
@@ -79,9 +79,17 @@ def capture_window(
     memory_dc.SelectObject(bitmap)
 
     try:
-        # PW_RENDERFULLCONTENT asks DWM/the app to render the full window.
-        result = win32gui.PrintWindow(hwnd, memory_dc.GetSafeHdc(), 0x00000002)
-        if result != 1:
+        # PrintWindow is exported by user32.dll; pywin32 does not expose it
+        # as win32gui.PrintWindow in all builds.
+        print_window = ctypes.windll.user32.PrintWindow
+        print_window.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_uint]
+        print_window.restype = ctypes.c_bool
+        result = print_window(
+            ctypes.c_void_p(hwnd),
+            ctypes.c_void_p(memory_dc.GetSafeHdc()),
+            ctypes.c_uint(0x00000002),  # PW_RENDERFULLCONTENT
+        )
+        if not result:
             raise RuntimeError(
                 "Windows could not render this window off-screen. "
                 "Try leaving BlueStacks visible behind your other apps."
@@ -94,9 +102,8 @@ def capture_window(
             "raw", "BGRX", 0, 1
         ).transpose(Image.Transpose.FLIP_TOP_BOTTOM)
 
-        # Reject obvious blank/black captures; these are common with GPU surfaces.
         extrema = image.convert("L").getextrema()
-        if extrema == (0, 0) or (extrema[1] <= 3 and extrema[0] == 0):
+        if extrema[1] <= 3:
             raise RuntimeError(
                 "The window returned a blank/black frame. This game renderer "
                 "may not support minimised/off-screen capture. Keep BlueStacks "
