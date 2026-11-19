@@ -24,6 +24,8 @@ CITY_REGIONS = {
     "quests": (0.00, 0.45, 0.20, 0.78),
 }
 
+REVIEW_CONFIDENCE = 0.75
+
 
 def _get_reader() -> easyocr.Reader:
     global _reader
@@ -39,27 +41,52 @@ def _number_token(text: str) -> str | None:
     return match.group(0).replace(" ", "") if match else None
 
 
-def _parse_header(texts: list[str]) -> dict[str, Any]:
-    joined = " ".join(texts)
+def _to_quantity(token: str) -> int | None:
+    """Convert abbreviated game quantities to integers (e.g. 956.1K)."""
+    match = re.fullmatch(r"(\d+(?:[.,]\d+)?)([KMB]?)", token, re.IGNORECASE)
+    if not match:
+        return None
+    number = float(match.group(1).replace(",", "."))
+    multiplier = {"": 1, "K": 1_000, "M": 1_000_000, "B": 1_000_000_000}
+    return int(round(number * multiplier[match.group(2).upper()]))
+
+
+def _parse_header(detections: list[dict[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
+    for detection in detections:
+        text = detection["text"]
+        confidence = detection["confidence"]
 
-    power = re.search(r"\b\d{1,3}(?:,\d{3})+\b", joined)
-    if power:
-        result["power"] = int(power.group(0).replace(",", ""))
+        power = re.search(r"\b\d{1,3}(?:,\d{3})+\b", text)
+        if power:
+            result["power"] = {
+                "value": int(power.group(0).replace(",", "")),
+                "confidence": confidence,
+                "needs_review": confidence < REVIEW_CONFIDENCE,
+            }
 
-    age = re.search(r"\b(Stone|Bronze|Iron|Dark)\s+Age\b", joined, re.IGNORECASE)
-    if age:
-        result["civilization_age"] = age.group(0).title()
+        age = re.search(
+            r"\b(Stone|Bronze|Iron|Dark)\s+Age\b", text, re.IGNORECASE
+        )
+        if age:
+            result["civilization_age"] = {
+                "value": age.group(0).title(),
+                "confidence": confidence,
+                "needs_review": confidence < REVIEW_CONFIDENCE,
+            }
 
-    vip = re.search(r"\bVIP\s*(\d+)\b", joined, re.IGNORECASE)
-    if vip:
-        result["vip_level"] = int(vip.group(1))
-
+        vip = re.search(r"\bVIP\s*(\d+)\b", text, re.IGNORECASE)
+        if vip:
+            result["vip_level"] = {
+                "value": int(vip.group(1)),
+                "confidence": confidence,
+                "needs_review": confidence < REVIEW_CONFIDENCE,
+            }
     return result
 
 
 def analyse_image(image_path: str | Path) -> dict[str, Any]:
-    """Read selected game UI regions and return raw plus structured OCR results."""
+    """Read selected game UI regions and return structured OCR results."""
     path = Path(image_path)
     if not path.is_file():
         raise FileNotFoundError(f"Screenshot not found: {path}")
@@ -96,14 +123,35 @@ def analyse_image(image_path: str | Path) -> dict[str, Any]:
                 ],
             })
 
-    header = _parse_header(region_text.get("player_header", []))
-    resources: dict[str, str | None] = {}
+    header_detections = [
+        item for item in detections if item["region"] == "player_header"
+    ]
+    header = _parse_header(header_detections)
+
+    resources: dict[str, dict[str, Any] | None] = {}
     for resource in ("food", "wood", "stone"):
-        candidates = region_text.get(resource, [])
-        resources[resource] = next(
-            (token for text in candidates if (token := _number_token(text))),
+        candidates = [
+            item for item in detections if item["region"] == resource
+        ]
+        selected = next(
+            (
+                (item, token)
+                for item in candidates
+                if (token := _number_token(item["text"])) is not None
+            ),
             None,
         )
+        if selected is None:
+            resources[resource] = None
+            continue
+
+        item, token = selected
+        resources[resource] = {
+            "raw": token,
+            "value": _to_quantity(token),
+            "confidence": item["confidence"],
+            "needs_review": item["confidence"] < REVIEW_CONFIDENCE,
+        }
 
     quest_text = region_text.get("quests", [])
     timer_text = region_text.get("timers", [])
@@ -134,10 +182,18 @@ def analyse_image(image_path: str | Path) -> dict[str, Any]:
         "quest_text": quest_text,
         "timer_text": timer_text,
         "detections": detections,
+        "review_required": any(
+            item.get("needs_review", False)
+            for item in [
+                *header.values(),
+                *(value for value in resources.values() if value is not None),
+            ]
+        ),
         "note": (
-            "OCR is approximate. Values are extracted from fixed city-layout "
-            "regions and must be verified against the screenshot. A missing "
-            "value means it was not confidently detected, not that it is zero."
+            "OCR is approximate. Abbreviated resource quantities are converted "
+            "to integers while retaining their raw text and confidence. "
+            "Low-confidence values are flagged for review. A missing value "
+            "means it was not detected, not that it is zero."
         ),
     }
 
