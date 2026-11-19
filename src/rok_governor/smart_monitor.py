@@ -34,6 +34,17 @@ def _change_ratio(previous: np.ndarray, current: np.ndarray) -> float:
     return float(np.count_nonzero(changed)) / float(changed.size)
 
 
+def _prune_screenshots(directory: str | Path, keep: int = 200) -> None:
+    """Bound diagnostic screenshot storage while preserving the newest captures."""
+    files = sorted(
+        Path(directory).glob("window_*.png"),
+        key=lambda item: item.stat().st_mtime,
+        reverse=True,
+    )
+    for old_file in files[keep:]:
+        old_file.unlink(missing_ok=True)
+
+
 def run_smart_monitor(
     *,
     title: str = "万国覚醒",
@@ -188,6 +199,8 @@ def run_smart_monitor(
             finally:
                 if not keep_screenshot:
                     screenshot.unlink(missing_ok=True)
+            if keep_screenshot:
+                _prune_screenshots(screenshot_dir)
 
             if duration and time.monotonic() - started >= duration:
                 break
