@@ -14,6 +14,7 @@ from google import genai
 from google.genai import types
 
 DEFAULT_MODEL = "gemini-3.8-flash"
+GEMINI_TIMEOUT_MS = 45_000
 
 VISION_SCHEMA = {
     "type": "OBJECT",
@@ -65,8 +66,7 @@ def analyse_with_gemini(
     if not api_key:
         raise RuntimeError(
             "GEMINI_API_KEY is not set. Add it to a local .env file; "
-            "see .env.example. Gemini is optional, so you can omit --gemini "
-            "to use local OCR only."
+            "see .env.example. Gemini is optional, so omit --gemini for local OCR only."
         )
 
     path = Path(image_path)
@@ -75,20 +75,17 @@ def analyse_with_gemini(
 
     prompt = (
         "Analyse this Rise of Kingdoms game screenshot. Return only observations "
-        "that are visibly supported by the image. Identify the screen type, "
-        "player power, civilization age, VIP level, visible food/wood/stone/gold "
-        "amounts, quests, and visible activities or timers. Convert abbreviated "
-        "resource amounts such as 956.1K or 1.2M to integers when legible. "
-        "If a value is obscured, cropped, or ambiguous, return null and list "
-        "the field in uncertain_fields. Do not infer hidden account data, "
-        "do not guess missing values, and do not treat emulator window chrome "
-        "as game information. Resource labels must be matched to their icons, "
-        "not merely to horizontal position."
+        "visibly supported by the image. Identify screen type, player power, "
+        "civilization age, VIP level, food/wood/stone/gold amounts, quests, "
+        "activities and timers. Convert abbreviated amounts to integers when "
+        "legible. If obscured, cropped or ambiguous, return null and list the "
+        "field in uncertain_fields. Do not guess hidden data or treat emulator "
+        "window chrome as game information. Match resource labels to icons, "
+        "not merely horizontal position."
     )
     if ocr_observation:
         prompt += (
-            "\n\nLocal OCR output is provided as a secondary hint. Verify it "
-            "against the image; it may contain mistakes:\n"
+            "\n\nLocal OCR is only a secondary hint; verify it against the image:\n"
             + json.dumps(
                 {
                     "account_state": ocr_observation.get("account_state", {}),
@@ -99,16 +96,24 @@ def analyse_with_gemini(
             )
         )
 
-    mime_type = "image/png"
     with path.open("rb") as image_file:
         image_bytes = image_file.read()
 
-    client = genai.Client(api_key=api_key)
+    selected_model = model or os.getenv("GEMINI_MODEL", DEFAULT_MODEL)
+    # Timeout is in milliseconds. Disable SDK retries so a failed request
+    # doesn't silently wait through multiple long retry attempts.
+    client = genai.Client(
+        api_key=api_key,
+        http_options=types.HttpOptions(
+            timeout=GEMINI_TIMEOUT_MS,
+            retry_options=types.HttpRetryOptions(attempts=1),
+        ),
+    )
     response = client.models.generate_content(
-        model=model or os.getenv("GEMINI_MODEL", DEFAULT_MODEL),
+        model=selected_model,
         contents=[
             prompt,
-            types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+            types.Part.from_bytes(data=image_bytes, mime_type="image/png"),
         ],
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
@@ -126,7 +131,7 @@ def analyse_with_gemini(
 
     return {
         "provider": "Google Gemini",
-        "model": model or os.getenv("GEMINI_MODEL", DEFAULT_MODEL),
+        "model": selected_model,
         "analysis": result,
         "note": (
             "Gemini output is a visual interpretation, not verified account data. "
