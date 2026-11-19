@@ -1,9 +1,4 @@
-"""Change-aware window monitoring with selective OCR.
-
-This first prototype samples the game window, compares downscaled frames, and
-runs OCR only after a meaningful visual change or a periodic heartbeat.
-It does not send input to the game.
-"""
+"""Change-aware game-window monitoring with Gemini strategy and bounded input."""
 from __future__ import annotations
 
 import json
@@ -138,7 +133,8 @@ def run_smart_monitor(
         f"Smart monitoring '{title}' every {sample_interval:g}s; "
         f"OCR on change (>{change_threshold:.1%}) or every {heartbeat:g}s. "
         + ("Gemini strategy enabled; " if gemini_enabled else "")
-        + "Read-only; Ctrl+C to stop.",
+        + ("Background input enabled; " if automation_enabled and gemini_enabled else "Observe-only; ")
+        + "Ctrl+C to stop.",
         flush=True,
     )
 
@@ -341,10 +337,10 @@ def run_resilient_monitor(
     max_retry_delay: float = 60.0,
     automation_enabled: bool = True,
 ) -> int:
-    """Run Gemini-powered, read-only monitoring and recover from transient failures.
+    """Run the Gemini governor and recover from transient failures.
 
     The supervisor restarts a failed monitoring cycle with exponential backoff.
-    It never sends input to the game. A finite duration applies to the whole run,
+    A finite duration applies to the whole run,
     not to each restart.
     """
     if retry_delay <= 0 or max_retry_delay < retry_delay:
@@ -358,7 +354,8 @@ def run_resilient_monitor(
     failures = 0
     print(
         "RoK Governor supervisor started. Gemini strategy is enabled; "
-        "game interaction is disabled. Press Ctrl+C to stop.",
+        + ("bounded background input is enabled. " if automation_enabled else "observe-only mode is enabled. ")
+        + "Press Ctrl+C to stop.",
         flush=True,
     )
     while True:
