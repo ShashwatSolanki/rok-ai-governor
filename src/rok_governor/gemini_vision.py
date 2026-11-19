@@ -13,16 +13,41 @@ from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 
-DEFAULT_MODEL = "gemini-3.8-flash"
+# Keep the model configurable: availability and service load can change.
+DEFAULT_MODEL = "gemini-3.6-flash"
 GEMINI_TIMEOUT_MS = 45_000
+
+COMMANDER_SCHEMA = {
+    "type": "OBJECT",
+    "properties": {
+        "name": {"type": "STRING", "nullable": True},
+        "rarity": {"type": "STRING", "nullable": True},
+        "level": {"type": "INTEGER", "nullable": True},
+        "star_level": {"type": "NUMBER", "nullable": True},
+        "skills_visible": {"type": "BOOLEAN"},
+        "skill_details": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "specialties": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "evidence": {"type": "STRING"},
+        "uncertain_fields": {"type": "ARRAY", "items": {"type": "STRING"}},
+    },
+    "required": [
+        "name", "rarity", "level", "star_level", "skills_visible",
+        "skill_details", "specialties", "evidence", "uncertain_fields",
+    ],
+}
 
 VISION_SCHEMA = {
     "type": "OBJECT",
     "properties": {
         "screen_type": {
             "type": "STRING",
-            "enum": ["city", "world_map", "commander", "building", "research", "other", "unknown"],
+            "enum": [
+                "city", "world_map", "commander_list", "commander_detail",
+                "building_detail", "research", "hospital", "inventory",
+                "mail", "event", "alliance", "other", "unknown",
+            ],
         },
+        "screen_description": {"type": "STRING"},
         "player_power": {"type": "INTEGER", "nullable": True},
         "civilization_age": {"type": "STRING", "nullable": True},
         "vip_level": {"type": "INTEGER", "nullable": True},
@@ -35,22 +60,39 @@ VISION_SCHEMA = {
                         "raw": {"type": "STRING", "nullable": True},
                         "value": {"type": "INTEGER", "nullable": True},
                         "evidence": {"type": "STRING"},
+                        "confidence": {"type": "NUMBER"},
                     },
-                    "required": ["raw", "value", "evidence"],
+                    "required": ["raw", "value", "evidence", "confidence"],
                 }
-                for name in ("food", "wood", "stone", "gold")
+                for name in ("food", "wood", "stone", "gold", "gems")
             },
-            "required": ["food", "wood", "stone", "gold"],
+            "required": ["food", "wood", "stone", "gold", "gems"],
         },
+        "selected_commander": {
+            "type": "OBJECT",
+            "nullable": True,
+            "properties": COMMANDER_SCHEMA["properties"],
+            "required": COMMANDER_SCHEMA["required"],
+        },
+        "visible_commanders": {
+            "type": "ARRAY",
+            "items": COMMANDER_SCHEMA,
+        },
+        "visible_buildings": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "visible_research": {"type": "ARRAY", "items": {"type": "STRING"}},
         "visible_quests": {"type": "ARRAY", "items": {"type": "STRING"}},
         "visible_activities": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "visible_timers": {"type": "ARRAY", "items": {"type": "STRING"}},
+        "new_unlocks": {"type": "ARRAY", "items": {"type": "STRING"}},
         "uncertain_fields": {"type": "ARRAY", "items": {"type": "STRING"}},
         "notes": {"type": "ARRAY", "items": {"type": "STRING"}},
     },
     "required": [
-        "screen_type", "player_power", "civilization_age", "vip_level",
-        "resources", "visible_quests", "visible_activities",
-        "uncertain_fields", "notes",
+        "screen_type", "screen_description", "player_power",
+        "civilization_age", "vip_level", "resources", "selected_commander",
+        "visible_commanders", "visible_buildings", "visible_research",
+        "visible_quests", "visible_activities", "visible_timers",
+        "new_unlocks", "uncertain_fields", "notes",
     ],
 }
 
@@ -74,21 +116,38 @@ def analyse_with_gemini(
         raise FileNotFoundError(f"Screenshot not found: {path}")
 
     prompt = (
-        "Analyse this Rise of Kingdoms game screenshot. Return only observations "
-        "visibly supported by the image. Identify screen type, player power, "
-        "civilization age, VIP level, food/wood/stone/gold amounts, quests, "
-        "activities and timers. Convert abbreviated amounts to integers when "
-        "legible. If obscured, cropped or ambiguous, return null and list the "
-        "field in uncertain_fields. Do not guess hidden data or treat emulator "
-        "window chrome as game information. Match resource labels to icons, "
-        "not merely horizontal position."
+        "You are a visual state observer for Rise of Kingdoms. Inspect the entire "
+        "game screenshot and classify the currently open screen. This may be the "
+        "city, world map, commander roster, commander detail, building, research, "
+        "hospital, inventory, mail, event, or alliance screen. Do not assume it is "
+        "the city screen.\n\n"
+        "When commanders are visible, identify each commander only when the portrait "
+        "or visible name supports the identification. Extract visible rarity, level, "
+        "star level, specialties and skill text. For a selected commander, populate "
+        "selected_commander. For a roster, populate visible_commanders. Never infer "
+        "a commander identity from a level number or role icon alone.\n\n"
+        "Read resources by matching each number to its adjacent resource icon/label, "
+        "not by horizontal position alone. Convert K/M/B quantities to integers only "
+        "when the suffix and number are legible. Read visible building/research names, "
+        "quests, activities and timers where possible. Do not claim an unlock is new "
+        "unless the screenshot explicitly indicates it; otherwise leave new_unlocks "
+        "empty.\n\n"
+        "Return only information visually supported by the screenshot. Use null for "
+        "unreadable scalar fields, empty arrays for absent lists, and describe "
+        "ambiguity in uncertain_fields. Do not invent hidden account data, upgrade "
+        "levels, commander skills, or game state. The result is an observation, not "
+        "a strategy decision."
     )
     if ocr_observation:
         prompt += (
-            "\n\nLocal OCR is only a secondary hint; verify it against the image:\n"
+            "\n\nLocal OCR is a secondary hint only. Verify it against the image; "
+            "it may contain region-label mistakes or incorrect resource associations:\n"
             + json.dumps(
                 {
+                    "profile": ocr_observation.get("profile"),
+                    "screen": ocr_observation.get("screen", {}),
                     "account_state": ocr_observation.get("account_state", {}),
+                    "regions": ocr_observation.get("regions", {}),
                     "quest_text": ocr_observation.get("quest_text", []),
                     "timer_text": ocr_observation.get("timer_text", []),
                 },
@@ -100,8 +159,6 @@ def analyse_with_gemini(
         image_bytes = image_file.read()
 
     selected_model = model or os.getenv("GEMINI_MODEL", DEFAULT_MODEL)
-    # Timeout is in milliseconds. Disable SDK retries so a failed request
-    # doesn't silently wait through multiple long retry attempts.
     client = genai.Client(
         api_key=api_key,
         http_options=types.HttpOptions(
@@ -135,6 +192,7 @@ def analyse_with_gemini(
         "analysis": result,
         "note": (
             "Gemini output is a visual interpretation, not verified account data. "
-            "Compare it with local OCR and the original screenshot before relying on it."
+            "It cannot establish that an item is newly unlocked without a previous "
+            "observation. Compare uncertain fields with the screenshot and history."
         ),
     }
