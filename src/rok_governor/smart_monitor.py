@@ -231,7 +231,10 @@ def run_smart_monitor(
                         from .input_controller import execute_safe_actions, WindowInputError
 
                         execution_store = ExecutionStore(database)
-                        for proposed in ((advice.get("advice") or {}).get("commands") or []) if automation_enabled else []:
+                        candidate_commands = (
+                            (advice.get("advice") or {}).get("commands") or []
+                        ) if automation_enabled else []
+                        for proposed in candidate_commands:
                             if not proposed.get("input_actions"):
                                 continue
                             if not proposed.get("preconditions") or not proposed.get("verification"):
@@ -240,20 +243,36 @@ def run_smart_monitor(
                                 continue
                             try:
                                 sent = execute_safe_actions(title, proposed)
-                                time.sleep(1.2)
-                                verification_frame = capture_window(title, screenshot_dir)
                                 execution_store.finish(
                                     proposed, "posted",
-                                    {"input_results": sent, "post_action_screenshot": str(verification_frame),
-                                     "verification_status": "awaiting_next_visual_assessment"},
+                                    {"input_results": sent, "verification_status": "awaiting_post_action_capture"},
                                 )
-                                keep_screenshot = True
-                                print(
-                                    f"Background input posted for '{proposed.get('title')}'; "
-                                    f"post-action frame saved to {verification_frame}. "
-                                    "Outcome is not yet verified.",
-                                    flush=True,
-                                )
+                                time.sleep(1.2)
+                                try:
+                                    verification_frame = capture_window(title, screenshot_dir)
+                                    execution_store.finish(
+                                        proposed, "posted",
+                                        {"input_results": sent, "post_action_screenshot": str(verification_frame),
+                                         "verification_status": "awaiting_next_visual_assessment"},
+                                    )
+                                    keep_screenshot = True
+                                    print(
+                                        f"Background input posted for '{proposed.get('title')}'; "
+                                        f"post-action frame saved to {verification_frame}. "
+                                        "Outcome is not yet verified.",
+                                        flush=True,
+                                    )
+                                except Exception as capture_exc:
+                                    execution_store.finish(
+                                        proposed, "posted",
+                                        {"input_results": sent, "verification_status": "capture_failed",
+                                         "capture_error": str(capture_exc)},
+                                    )
+                                    print(
+                                        f"Background input was posted for '{proposed.get('title')}', "
+                                        f"but post-action capture failed: {capture_exc}",
+                                        flush=True,
+                                    )
                                 break
                             except WindowInputError as exc:
                                 execution_store.finish(proposed, "blocked", {"reason": str(exc)})
