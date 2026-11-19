@@ -97,10 +97,12 @@ def capture_window(
 
         info = bitmap.GetInfo()
         bits = bitmap.GetBitmapBits(True)
+        # GetBitmapBits is already top-down for this capture path; flipping it
+        # vertically would turn the BlueStacks image upside down.
         image = Image.frombuffer(
             "RGB", (info["bmWidth"], info["bmHeight"]), bits,
             "raw", "BGRX", 0, 1
-        ).transpose(Image.Transpose.FLIP_TOP_BOTTOM)
+        )
 
         extrema = image.convert("L").getextrema()
         if extrema[1] <= 3:
