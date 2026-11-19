@@ -6,6 +6,7 @@ It does not send input to the game.
 """
 from __future__ import annotations
 
+import os
 import time
 from pathlib import Path
 from typing import Any
@@ -242,6 +243,11 @@ def run_resilient_monitor(
     """
     if retry_delay <= 0 or max_retry_delay < retry_delay:
         raise ValueError("Retry delays must be positive and max_retry_delay >= retry_delay.")
+    from dotenv import load_dotenv
+
+    load_dotenv()
+    if not os.getenv("GEMINI_API_KEY"):
+        raise RuntimeError("GEMINI_API_KEY is missing. Add it to .env before starting the Gemini governor.")
     started = time.monotonic()
     failures = 0
     print(
