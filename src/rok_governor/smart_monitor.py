@@ -145,7 +145,14 @@ def run_smart_monitor(
                             model=gemini_model,
                         )
                         advice_path = save_advice(advice)
-                        print(f"Gemini recommendations saved: {advice_path}", flush=True)
+                        from .task_store import TaskStore
+
+                        synced = TaskStore(database).ingest(advice)
+                        print(
+                            f"Gemini recommendations saved: {advice_path}; "
+                            f"task queue synced ({synced} recommendation(s)).",
+                            flush=True,
+                        )
                     except Exception as exc:
                         print(
                             f"Gemini advisor unavailable: {type(exc).__name__}: {exc}",
