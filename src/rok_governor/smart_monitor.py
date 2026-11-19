@@ -332,6 +332,21 @@ def run_resilient_monitor(
             )
             return 0
         except KeyboardInterrupt:
+            previous_health_path = Path(database).with_name("runtime_status.json")
+            try:
+                previous_health = json.loads(previous_health_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                previous_health = {}
+            _write_runtime_status(
+                database, state="stopped", title=title,
+                started_at=previous_health.get("started_at"),
+                last_capture_at=previous_health.get("last_capture_at"),
+                last_ocr_at=previous_health.get("last_ocr_at"),
+                last_gemini_at=previous_health.get("last_gemini_at"),
+                last_error=previous_health.get("last_error"),
+                consecutive_failures=failures,
+                observation_count=previous_health.get("observations_this_session", 0),
+            )
             print("\\nGovernor stopped by user.", flush=True)
             return 0
         except Exception as exc:
