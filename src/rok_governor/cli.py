@@ -95,6 +95,25 @@ def build_parser() -> argparse.ArgumentParser:
                               help="Minimum seconds between Gemini strategy requests.")
     smart_parser.add_argument("--gemini-model", default=None)
 
+    run_parser = subparsers.add_parser(
+        "run", help="Run resilient Gemini-powered background monitoring (read-only)."
+    )
+    run_parser.add_argument("--title", default="万国覚醒")
+    run_parser.add_argument("--sample-interval", type=float, default=2.0)
+    run_parser.add_argument("--change-threshold", type=float, default=0.025)
+    run_parser.add_argument("--stable-frames", type=int, default=2)
+    run_parser.add_argument("--heartbeat", type=float, default=30.0)
+    run_parser.add_argument("--gemini-interval", type=float, default=180.0)
+    run_parser.add_argument("--duration", type=int, default=0,
+                            help="Stop after this many seconds; 0 runs until Ctrl+C.")
+    run_parser.add_argument("--profile", choices=("bluestacks", "pc"), default="pc")
+    run_parser.add_argument("--database", default="data/account_history.sqlite3")
+    run_parser.add_argument("--screenshot-dir", default="screenshots")
+    run_parser.add_argument("--output-dir", default="observations")
+    run_parser.add_argument("--gemini-model", default=None)
+    run_parser.add_argument("--retry-delay", type=float, default=5.0)
+    run_parser.add_argument("--max-retry-delay", type=float, default=60.0)
+
     advise_parser = subparsers.add_parser(
         "advise", help="Capture the current game screen and ask Gemini what to do next."
     )
@@ -325,6 +344,26 @@ def main() -> int:
             gemini_model=args.gemini_model,
         )
         return 0
+
+    if args.command == "run":
+        from .smart_monitor import run_resilient_monitor
+
+        return run_resilient_monitor(
+            title=args.title,
+            sample_interval=args.sample_interval,
+            change_threshold=args.change_threshold,
+            stable_frames=args.stable_frames,
+            heartbeat=args.heartbeat,
+            duration=args.duration,
+            profile=args.profile,
+            database=args.database,
+            screenshot_dir=args.screenshot_dir,
+            output_dir=args.output_dir,
+            gemini_interval=args.gemini_interval,
+            gemini_model=args.gemini_model,
+            retry_delay=args.retry_delay,
+            max_retry_delay=args.max_retry_delay,
+        )
 
     if args.command == "analyze":
         print(f"[1/3] Loading screenshot: {args.image}", flush=True)
