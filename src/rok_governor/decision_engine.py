@@ -25,6 +25,17 @@ def _state_map(store: AccountStore) -> dict[str, Any]:
     return {item["key"]: item["value"] for item in store.latest_state()}
 
 
+def _resource_state(flat_state: dict[str, Any]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for name in ("food", "wood", "stone", "gold", "gems"):
+        value = flat_state.get(f"resources.{name}.value")
+        raw = flat_state.get(f"resources.{name}.raw")
+        confidence = flat_state.get(f"resources.{name}.confidence")
+        if value is not None:
+            result[name] = {"value": value, "raw": raw, "confidence": confidence}
+    return result
+
+
 def build_farm_plan(
     database: str | Path = "data/account_history.sqlite3",
     targets: dict[str, int] | None = None,
@@ -33,7 +44,7 @@ def build_farm_plan(
     """Build a transparent prioritized plan from known resources and costs."""
     state = _state_map(AccountStore(database))
     targets = targets or DEFAULT_TARGETS
-    resources = state.get("resources", {})
+    resources = _resource_state(state)
     tasks: list[dict[str, Any]] = []
     unknown: list[str] = []
 
@@ -89,8 +100,8 @@ def build_farm_plan(
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "mode": "advisory",
         "account": {
-            "power": state.get("power", {}).get("value") if isinstance(state.get("power"), dict) else None,
-            "civilization_age": state.get("civilization_age", {}).get("value") if isinstance(state.get("civilization_age"), dict) else None,
+            "power": state.get("power.value"),
+            "civilization_age": state.get("civilization_age.value"),
         },
         "resources": {
             name: item.get("value")
