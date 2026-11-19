@@ -32,6 +32,15 @@ class TaskStore:
                 seen_count INTEGER NOT NULL DEFAULT 1,
                 source_screenshot TEXT
             )""")
+            db.execute("""CREATE TABLE IF NOT EXISTS task_reviews (
+                task_id INTEGER PRIMARY KEY,
+                assessment TEXT NOT NULL,
+                visual_evidence TEXT NOT NULL,
+                confidence REAL,
+                reviewed_at TEXT NOT NULL,
+                source_screenshot TEXT,
+                FOREIGN KEY(task_id) REFERENCES governor_tasks(id)
+            )""")
 
     def ingest(self, result: dict[str, Any]) -> int:
         advice = result.get("advice") or {}
@@ -65,6 +74,60 @@ class TaskStore:
                      str(result.get("source_screenshot") or "")))
                 processed += 1
         return processed
+
+    def record_reviews(self, result: dict[str, Any]) -> int:
+        """Store Gemini's visual assessments without changing task status."""
+        advice = result.get("advice") or {}
+        now = result.get("generated_at") or datetime.now(timezone.utc).isoformat()
+        saved = 0
+        with sqlite3.connect(self.path) as db:
+            for review in advice.get("task_reviews") or []:
+                task_id = review.get("task_id")
+                assessment = str(review.get("assessment") or "uncertain")
+                if not isinstance(task_id, int) or assessment not in {
+                    "likely_completed", "still_pending", "uncertain"
+                }:
+                    continue
+                cursor = db.execute(
+                    """INSERT INTO task_reviews
+                       (task_id, assessment, visual_evidence, confidence,
+                        reviewed_at, source_screenshot)
+                       SELECT id, ?, ?, ?, ?, ?
+                       FROM governor_tasks WHERE id = ? AND status = 'pending'
+                       ON CONFLICT(task_id) DO UPDATE SET
+                         assessment=excluded.assessment,
+                         visual_evidence=excluded.visual_evidence,
+                         confidence=excluded.confidence,
+                         reviewed_at=excluded.reviewed_at,
+                         source_screenshot=excluded.source_screenshot""",
+                    (
+                        assessment,
+                        str(review.get("visual_evidence") or ""),
+                        review.get("confidence"),
+                        now,
+                        str(result.get("source_screenshot") or ""),
+                        task_id,
+                    ),
+                )
+                saved += cursor.rowcount
+        return saved
+
+    def list_reviews(self) -> list[dict[str, Any]]:
+        with sqlite3.connect(self.path) as db:
+            db.row_factory = sqlite3.Row
+            rows = db.execute(
+                """SELECT t.id, t.action, t.priority, t.status,
+                          r.assessment, r.visual_evidence, r.confidence,
+                          r.reviewed_at, r.source_screenshot
+                   FROM task_reviews r
+                   JOIN governor_tasks t ON t.id = r.task_id
+                   WHERE t.status = 'pending'
+                   ORDER BY CASE r.assessment
+                       WHEN 'likely_completed' THEN 0
+                       WHEN 'still_pending' THEN 1 ELSE 2 END,
+                       r.reviewed_at DESC"""
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def list(self, status: str = "pending") -> list[dict[str, Any]]:
         if status not in {"pending", "completed", "dismissed", "all"}:
