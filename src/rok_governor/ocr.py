@@ -52,8 +52,12 @@ def _get_reader() -> easyocr.Reader:
 
 
 def _number_token(text: str) -> str | None:
-    """Return a resource-like number token without guessing its meaning."""
-    match = re.search(r"\b\d+(?:[.,]\d+)?\s*[KMB]?\b", text, re.IGNORECASE)
+    """Return a resource-like number token, including grouped integers like 3,425."""
+    match = re.search(
+        r"(?<!\w)(?:\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:[.,]\d+)?)(?:\s*[KMB])?(?!\w)",
+        text,
+        re.IGNORECASE,
+    )
     return match.group(0).replace(" ", "") if match else None
 
 
@@ -66,7 +70,7 @@ def _to_quantity(token: str) -> int | None:
     if "," in number_text and "." in number_text:
         # Conventional thousands separators plus decimal point: 1,234.5
         number_text = number_text.replace(",", "")
-    elif re.fullmatch(r"\\d{1,3}(,\\d{3})+", number_text):
+    elif re.fullmatch(r"\d{1,3}(,\d{3})+", number_text):
         # Grouped integer: 3,425 must mean three thousand four hundred twenty-five.
         number_text = number_text.replace(",", "")
     else:
