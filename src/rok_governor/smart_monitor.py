@@ -46,6 +46,9 @@ def run_smart_monitor(
     database: str = "data/account_history.sqlite3",
     screenshot_dir: str = "screenshots",
     output_dir: str = "observations",
+    gemini_enabled: bool = False,
+    gemini_interval: float = 180.0,
+    gemini_model: str | None = None,
 ) -> int:
     """Watch a window continuously, invoking OCR selectively.
 
@@ -68,11 +71,13 @@ def run_smart_monitor(
     previous_signature: np.ndarray | None = None
     changed_streak = 0
     observation_number = 0
+    last_gemini = 0.0
 
     print(
         f"Smart monitoring '{title}' every {sample_interval:g}s; "
         f"OCR on change (>{change_threshold:.1%}) or every {heartbeat:g}s. "
-        "Read-only; Ctrl+C to stop.",
+        ("Gemini strategy enabled; " if gemini_enabled else "")
+        + "Read-only; Ctrl+C to stop.",
         flush=True,
     )
 
@@ -124,6 +129,30 @@ def run_smart_monitor(
                 )
                 last_ocr = time.monotonic()
                 changed_streak = 0
+
+                if gemini_enabled and (
+                    last_gemini == 0.0 or last_ocr - last_gemini >= gemini_interval
+                ):
+                    try:
+                        from .gemini_advisor import advise_with_gemini, save_advice
+
+                        print("Requesting Gemini strategy assessment...", flush=True)
+                        advice = advise_with_gemini(
+                            screenshot,
+                            profile=profile,
+                            database=database,
+                            ocr_observation=observation,
+                            model=gemini_model,
+                        )
+                        advice_path = save_advice(advice)
+                        print(f"Gemini recommendations saved: {advice_path}", flush=True)
+                    except Exception as exc:
+                        print(
+                            f"Gemini advisor unavailable: {type(exc).__name__}: {exc}",
+                            flush=True,
+                        )
+                    finally:
+                        last_gemini = time.monotonic()
             else:
                 screenshot.unlink(missing_ok=True)
 
