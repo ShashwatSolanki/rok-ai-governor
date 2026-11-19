@@ -1,7 +1,6 @@
-"""Structured, human-executed in-game command proposals from Gemini.
+"""Persistent declarative in-game action proposals returned by Gemini.
 
-This module stores declarative action instructions only. It never sends input to
-the game, invokes shell commands, or executes arbitrary model-generated code.
+Only the separate input controller can dispatch its narrow allow-listed actions.
 """
 from __future__ import annotations
 
@@ -22,7 +21,7 @@ ALLOWED_STATUSES = {"proposed", "completed", "dismissed"}
 
 
 class CommandStore:
-    """Persistent queue of structured commands for the player to perform."""
+    """Persistent queue of structured Gemini action proposals."""
 
     def __init__(self, database: str | Path = "data/account_history.sqlite3"):
         self.path = Path(database)
