@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import time
 from pathlib import Path
 
 from .capture import capture_primary_monitor
@@ -83,16 +84,48 @@ def main() -> int:
         return 0
 
     if args.command == "analyze":
+        print(f"[1/3] Loading screenshot: {args.image}", flush=True)
+        if not args.image.is_file():
+            raise FileNotFoundError(f"Screenshot not found: {args.image}")
+
+        print("[2/3] Running local EasyOCR (first run can take a while)...", flush=True)
+        started = time.perf_counter()
         observation = analyse_image(args.image)
+        print(f"      OCR finished in {time.perf_counter() - started:.1f}s.", flush=True)
+
+        gemini_failed = False
         if args.gemini:
             from .gemini_vision import analyse_with_gemini
 
-            observation["gemini_vision"] = analyse_with_gemini(
-                args.image, ocr_observation=observation, model=args.gemini_model
-            )
+            print("[3/3] Sending screenshot to Gemini (45-second request timeout)...", flush=True)
+            started = time.perf_counter()
+            try:
+                observation["gemini_vision"] = analyse_with_gemini(
+                    args.image, ocr_observation=observation, model=args.gemini_model
+                )
+                print(
+                    f"      Gemini finished in {time.perf_counter() - started:.1f}s.",
+                    flush=True,
+                )
+            except Exception as exc:
+                gemini_failed = True
+                observation["gemini_vision"] = {
+                    "error": type(exc).__name__,
+                    "message": str(exc),
+                    "note": "Local OCR succeeded; Gemini analysis failed. Check network, API key, quota and model availability.",
+                }
+                print(
+                    f"      Gemini failed after {time.perf_counter() - started:.1f}s: "
+                    f"{type(exc).__name__}: {exc}",
+                    flush=True,
+                )
+
         output = save_observation(observation, args.output_dir)
         print(json.dumps(observation, indent=2, ensure_ascii=False))
         print(f"\nJSON observation saved: {output}")
+        if gemini_failed:
+            print("Local OCR results were saved; Gemini results are unavailable.")
+            return 1
         return 0
 
     return 2
