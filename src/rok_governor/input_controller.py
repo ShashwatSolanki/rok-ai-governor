@@ -102,7 +102,7 @@ def execute_safe_actions(
     allowed_command_types = {"inspect_screen", "open_menu", "select_tab", "start_gathering"}
     if command.get("action_type") not in allowed_command_types:
         raise WindowInputError("Command type is not enabled for unattended execution.")
-    if str(command.get("risk", "unknown")).casefold() != "low":
+    if str(command.get("risk", "unknown")).strip().casefold() != "low":
         raise WindowInputError("Only Gemini-labelled low-risk commands may run unattended.")
 
     confidence = command.get("confidence")
@@ -113,8 +113,17 @@ def execute_safe_actions(
         or not minimum_confidence <= confidence <= 1.0
     ):
         raise WindowInputError("Command confidence must be between the threshold and 1.0.")
-    if not isinstance(command.get("preconditions"), list) or not command["preconditions"]:
-        raise WindowInputError("Command has no explicit preconditions.")
+    if not isinstance(command.get("title"), str) or not command["title"].strip():
+        raise WindowInputError("Command title is missing.")
+    if not isinstance(command.get("target"), str) or not command["target"].strip():
+        raise WindowInputError("Command target is missing.")
+    preconditions = command.get("preconditions")
+    if (
+        not isinstance(preconditions, list)
+        or not preconditions
+        or any(not isinstance(item, str) or not item.strip() for item in preconditions)
+    ):
+        raise WindowInputError("Command has no valid explicit preconditions.")
     if not isinstance(command.get("verification"), str) or not command["verification"].strip():
         raise WindowInputError("Command has no verification criterion.")
 
