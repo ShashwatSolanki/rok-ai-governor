@@ -36,7 +36,7 @@ class TaskStore:
     def ingest(self, result: dict[str, Any]) -> int:
         advice = result.get("advice") or {}
         now = result.get("generated_at") or datetime.now(timezone.utc).isoformat()
-        inserted = 0
+        processed = 0
         with sqlite3.connect(self.path) as db:
             for item in advice.get("recommended_actions") or []:
                 action = str(item.get("action") or "").strip()
@@ -63,9 +63,8 @@ class TaskStore:
                      item.get("confidence"), json.dumps(item.get("uncertainties") or []),
                      json.dumps(item.get("manual_steps") or []), now, now,
                      str(result.get("source_screenshot") or "")))
-                if cur.rowcount == 1:
-                    inserted += 1
-        return inserted
+                processed += 1
+        return processed
 
     def list(self, status: str = "pending") -> list[dict[str, Any]]:
         if status not in {"pending", "completed", "dismissed", "all"}:
