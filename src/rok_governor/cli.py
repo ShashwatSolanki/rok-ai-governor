@@ -156,7 +156,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--database", default="data/account_history.sqlite3"
     )
     commands_parser = subparsers.add_parser(
-        "commands", help="List structured in-game commands for you to perform manually."
+        "commands", help="List structured Gemini action proposals."
     )
     commands_parser.add_argument("--database", default="data/account_history.sqlite3")
     commands_parser.add_argument(
@@ -168,6 +168,9 @@ def build_parser() -> argparse.ArgumentParser:
     command_done_parser.add_argument("command_id", type=int)
     command_done_parser.add_argument("--status", choices=("completed", "dismissed", "proposed"), default="completed")
     command_done_parser.add_argument("--database", default="data/account_history.sqlite3")
+    automation_log_parser = subparsers.add_parser("automation-log", help="Show recent unattended input attempts.")
+    automation_log_parser.add_argument("--database", default="data/account_history.sqlite3")
+    automation_log_parser.add_argument("--limit", type=int, default=20)
     return parser
 
 
@@ -265,7 +268,21 @@ def main() -> int:
             if item["verification"]:
                 print(f"   Verify: {item['verification']}")
             print(f"   Record after you perform it: python -m rok_governor command-done {item['id']}")
-        print("These are instructions for you; the governor does not execute game inputs.")
+        print("Eligible low-risk actions may be dispatched by the background governor; other proposals remain manual.")
+        return 0
+
+    if args.command == "automation-log":
+        from .execution_store import ExecutionStore
+
+        entries = ExecutionStore(args.database).recent(max(1, min(args.limit, 200)))
+        if not entries:
+            print("No unattended input attempts recorded.")
+            return 0
+        for item in entries:
+            print(f"#{item['id']} [{item['status'].upper()}] {item['command_title']} ({item['action_type']})")
+            print(f"   Started: {item['started_at']} | Finished: {item['finished_at'] or 'in progress'}")
+            if item["details"]:
+                print("   Details: " + json.dumps(item["details"], ensure_ascii=False))
         return 0
 
     if args.command == "command-done":
