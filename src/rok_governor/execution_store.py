@@ -26,6 +26,14 @@ class ExecutionStore:
                     finished_at TEXT
                 )"""
             )
+            db.execute(
+                """CREATE TABLE IF NOT EXISTS automation_control (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    paused INTEGER NOT NULL DEFAULT 0,
+                    reason TEXT NOT NULL DEFAULT '',
+                    updated_at TEXT NOT NULL
+                )"""
+            )
 
     @staticmethod
     def fingerprint(command: dict[str, Any]) -> str:
@@ -131,8 +139,41 @@ class ExecutionStore:
                         execution_id,
                     ),
                 )
+                if assessment in {"failed", "uncertain"}:
+                    reason = (
+                        f"Execution #{execution_id} ({details.get('verification_criteria', 'action')}) "
+                        f"was visually assessed as {assessment}: "
+                        f"{str(review.get('visual_evidence') or 'no visual evidence supplied')}"
+                    )
+                    db.execute(
+                        """INSERT INTO automation_control (id, paused, reason, updated_at)
+                           VALUES (1, 1, ?, ?)
+                           ON CONFLICT(id) DO UPDATE SET paused=1, reason=excluded.reason,
+                             updated_at=excluded.updated_at""",
+                        (reason, datetime.now(timezone.utc).isoformat()),
+                    )
                 saved += 1
         return saved
+
+    def automation_pause(self) -> dict[str, Any] | None:
+        """Return the persistent fail-safe pause, if visual verification raised one."""
+        with sqlite3.connect(self.path) as db:
+            db.row_factory = sqlite3.Row
+            row = db.execute(
+                "SELECT paused, reason, updated_at FROM automation_control WHERE id = 1"
+            ).fetchone()
+        if row is None or not row["paused"]:
+            return None
+        return dict(row)
+
+    def resume_automation(self) -> bool:
+        """Clear a visual-verification pause after the operator reviews the game."""
+        with sqlite3.connect(self.path) as db:
+            cursor = db.execute(
+                "UPDATE automation_control SET paused=0, reason='', updated_at=? WHERE id=1 AND paused=1",
+                (datetime.now(timezone.utc).isoformat(),),
+            )
+            return cursor.rowcount > 0
 
     def recent(self, limit: int = 20) -> list[dict[str, Any]]:
         with sqlite3.connect(self.path) as db:

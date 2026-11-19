@@ -238,12 +238,24 @@ def run_smart_monitor(
 
                         execution_store = ExecutionStore(database)
                         execution_reviews_saved = execution_store.record_reviews(advice)
+                        automation_pause = execution_store.automation_pause()
                         candidate_commands = (
                             (advice.get("advice") or {}).get("commands") or []
-                        ) if automation_enabled and not pending_verification_before_cycle else []
+                        ) if (
+                            automation_enabled
+                            and not pending_verification_before_cycle
+                            and automation_pause is None
+                        ) else []
                         if automation_enabled and pending_verification_before_cycle:
                             print(
                                 "No new input this cycle: Gemini is assessing the previous click first.",
+                                flush=True,
+                            )
+                        elif automation_enabled and automation_pause:
+                            print(
+                                "Background input is paused after an unsuccessful/uncertain visual "
+                                f"review: {automation_pause['reason']} "
+                                "Review the game, then run 'python -m rok_governor automation-resume'.",
                                 flush=True,
                             )
                         for proposed in candidate_commands:

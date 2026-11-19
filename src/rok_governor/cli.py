@@ -171,6 +171,11 @@ def build_parser() -> argparse.ArgumentParser:
     automation_log_parser = subparsers.add_parser("automation-log", help="Show recent unattended input attempts.")
     automation_log_parser.add_argument("--database", default="data/account_history.sqlite3")
     automation_log_parser.add_argument("--limit", type=int, default=20)
+    automation_resume_parser = subparsers.add_parser(
+        "automation-resume",
+        help="Resume background input after reviewing a failed or uncertain visual action.",
+    )
+    automation_resume_parser.add_argument("--database", default="data/account_history.sqlite3")
     return parser
 
 
@@ -285,6 +290,15 @@ def main() -> int:
                 print("   Details: " + json.dumps(item["details"], ensure_ascii=False))
         return 0
 
+    if args.command == "automation-resume":
+        from .execution_store import ExecutionStore
+
+        if not ExecutionStore(args.database).resume_automation():
+            print("Background input is not paused.")
+            return 0
+        print("Background input resumed. Continue watching the game during unattended actions.")
+        return 0
+
     if args.command == "command-done":
         from .command_store import CommandStore
 
@@ -376,6 +390,14 @@ def main() -> int:
         print(f"Last Gemini success: {health.get('last_gemini_at') or 'never'}")
         print(f"Observations this session: {health.get('observations_this_session', 0)}")
         from .task_store import TaskStore
+
+        from .execution_store import ExecutionStore
+
+        automation_pause = ExecutionStore(args.database).automation_pause()
+        print(f"Background input: {'paused' if automation_pause else 'available'}")
+        if automation_pause:
+            print(f"Pause reason: {automation_pause['reason']}")
+            print("After reviewing the game, run: python -m rok_governor automation-resume")
 
         task_store = TaskStore(args.database)
         print(f"Pending recommendations: {len(task_store.list('pending'))}")
