@@ -1,6 +1,6 @@
 # RoK AI Governor
 
-A read-only companion for analysing Rise of Kingdoms screenshots and turning visible account information into structured observations.
+A read-only game observer with a Gemini strategy layer that turns visible Rise of Kingdoms state into prioritized recommendations and structured, player-performed command cards.
 
 > **Safety scope:** This project is an advisory tool. It does not automate gameplay, send inputs to the game, inspect game memory, modify the client, or connect to game services. Check the game's current terms before using third-party tools alongside your account.
 
@@ -13,6 +13,8 @@ A read-only companion for analysing Rise of Kingdoms screenshots and turning vis
 - Optionally send a screenshot and OCR hints to Gemini for structured visual interpretation.
 - Save observations as JSON for later review.
 - Keep Gemini optional: local OCR works without an API key.
+- Ask Gemini to produce structured action commands with targets, preconditions, ordered steps, risk, confidence, and verification criteria.
+- Persist command proposals in a separate queue and let the player record manual completion or dismissal.
 
 ## Requirements
 
@@ -111,6 +113,36 @@ python -m rok_governor health
 
 The health command reads `data/runtime_status.json` and reports heartbeat freshness, the last successful capture, OCR and Gemini operations, pending/completed recommendation counts, current monitor state, and the latest error. A heartbeat older than three minutes is flagged as possibly stale. It is a local diagnostic snapshot; if the process is killed abruptly, its state may remain at the last recorded heartbeat rather than changing to `stopped`.
 
+### Structured command queue
+
+Gemini now emits a second, more operational output alongside strategic recommendations: structured command proposals. Each proposal includes an action type, visible target, parameters, preconditions, ordered steps, risk, confidence, rationale, and a verification check. The background `run` process saves these proposals to the local SQLite database.
+
+List commands awaiting your action:
+
+```powershell
+python -m rok_governor commands
+```
+
+Show completed or dismissed entries:
+
+```powershell
+python -m rok_governor commands --status all
+```
+
+After you perform a command in the game, record it:
+
+```powershell
+python -m rok_governor command-done 1
+```
+
+Dismiss a proposal instead:
+
+```powershell
+python -m rok_governor command-done 1 --status dismissed
+```
+
+These are structured instructions for the human player, not executable macros. The command queue deliberately does not send mouse/keyboard input, invoke shell commands, spend currency, use items, or perform irreversible account changes. If Gemini cannot establish a target or prerequisite from the current screenshot, it should propose inspecting the relevant screen rather than guessing.
+
 This is unattended monitoring and decision support, not unattended gameplay: it does not click, type, dispatch marches, collect rewards, spend resources, or otherwise control the game. Gemini recommendations remain suggestions and should be checked against the actual screen. Keep the game window restored (it may sit behind other windows); minimised GPU rendering can produce stale or blank captures. Gemini calls use API quota and send screenshots to Google.
 
 ## Project layout
@@ -126,6 +158,7 @@ src/rok_governor/
   gemini_advisor.py
   account_store.py
   task_store.py
+  command_store.py
   smart_monitor.py
   cli.py
 screenshots/       # local captures (git-ignored)
