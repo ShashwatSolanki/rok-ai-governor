@@ -99,8 +99,10 @@ def advise_with_gemini(
     client = genai.Client(
         api_key=api_key,
         http_options=types.HttpOptions(
-            timeout=60_000,
-            retry_options=types.HttpRetryOptions(attempts=1),
+            timeout=120_000,
+            # Let the SDK retry transient 429/5xx responses instead of failing
+            # the entire advice cycle on a single overloaded Gemini request.
+            retry_options=types.HttpRetryOptions(attempts=3),
         ),
     )
     response = client.models.generate_content(
