@@ -6,8 +6,10 @@ It does not send input to the game.
 """
 from __future__ import annotations
 
+import json
 import os
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +35,41 @@ def _change_ratio(previous: np.ndarray, current: np.ndarray) -> float:
     difference = cv2.absdiff(previous, current)
     _, changed = cv2.threshold(difference, 18, 255, cv2.THRESH_BINARY)
     return float(np.count_nonzero(changed)) / float(changed.size)
+
+
+def _write_runtime_status(
+    database: str | Path,
+    *,
+    state: str,
+    title: str,
+    started_at: str | None = None,
+    last_capture_at: str | None = None,
+    last_ocr_at: str | None = None,
+    last_gemini_at: str | None = None,
+    last_error: str | None = None,
+    consecutive_failures: int = 0,
+    observation_count: int = 0,
+) -> Path:
+    """Atomically publish a small health snapshot beside the local database."""
+    path = Path(database).with_name("runtime_status.json")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "state": state,
+        "mode": "read_only",
+        "window_title": title,
+        "started_at": started_at,
+        "last_capture_at": last_capture_at,
+        "last_ocr_at": last_ocr_at,
+        "last_gemini_at": last_gemini_at,
+        "last_error": last_error,
+        "consecutive_failures": consecutive_failures,
+        "observations_this_session": observation_count,
+    }
+    temporary = path.with_suffix(".json.tmp")
+    temporary.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    temporary.replace(path)
+    return path
 
 
 def _prune_screenshots(directory: str | Path, keep: int = 200) -> None:
@@ -85,6 +122,11 @@ def run_smart_monitor(
     previous_signature: np.ndarray | None = None
     changed_streak = 0
     observation_number = 0
+    session_started_at = datetime.now(timezone.utc).isoformat()
+    last_capture_at: str | None = None
+    last_ocr_at: str | None = None
+    last_gemini_at: str | None = None
+    runtime_error: str | None = None
     latest_observation: dict[str, Any] | None = None
     next_gemini_at = 0.0
     gemini_failures = 0
@@ -99,10 +141,13 @@ def run_smart_monitor(
         flush=True,
     )
 
+    _write_runtime_status(database, state="starting", title=title, started_at=session_started_at)
     try:
         while True:
             loop_started = time.monotonic()
             screenshot = capture_window(title, screenshot_dir)
+            last_capture_at = datetime.now(timezone.utc).isoformat()
+            _write_runtime_status(database, state="running", title=title, started_at=session_started_at, last_capture_at=last_capture_at, last_ocr_at=last_ocr_at, last_gemini_at=last_gemini_at, last_error=runtime_error, observation_count=observation_number)
             keep_screenshot = False
             try:
                 signature = _frame_signature(screenshot)
@@ -138,6 +183,8 @@ def run_smart_monitor(
                         output = save_observation(observation, output_dir)
                         observation_number += 1
                         latest_observation = observation
+                        last_ocr_at = datetime.now(timezone.utc).isoformat()
+                        runtime_error = None
                         keep_screenshot = True
                         print(
                             f"Observation #{observation_id}: "
@@ -184,6 +231,8 @@ def run_smart_monitor(
                             flush=True,
                         )
                         gemini_failures = 0
+                        last_gemini_at = datetime.now(timezone.utc).isoformat()
+                        runtime_error = None
                         next_gemini_at = time.monotonic() + gemini_interval
                     except Exception as exc:
                         gemini_failures += 1
@@ -192,6 +241,8 @@ def run_smart_monitor(
                             gemini_retry_delay * (2 ** min(gemini_failures - 1, 6)),
                         )
                         next_gemini_at = time.monotonic() + delay
+                        runtime_error = f"Gemini {type(exc).__name__}: {exc}"
+                        _write_runtime_status(database, state="degraded", title=title, started_at=session_started_at, last_capture_at=last_capture_at, last_ocr_at=last_ocr_at, last_gemini_at=last_gemini_at, last_error=runtime_error, consecutive_failures=gemini_failures, observation_count=observation_number)
                         print(
                             f"Gemini advisor unavailable ({type(exc).__name__}: {exc}); "
                             f"retrying in {delay:g}s (failures: {gemini_failures}).",
@@ -202,6 +253,7 @@ def run_smart_monitor(
                     screenshot.unlink(missing_ok=True)
             if keep_screenshot:
                 _prune_screenshots(screenshot_dir)
+            _write_runtime_status(database, state="running" if runtime_error is None else "degraded", title=title, started_at=session_started_at, last_capture_at=last_capture_at, last_ocr_at=last_ocr_at, last_gemini_at=last_gemini_at, last_error=runtime_error, consecutive_failures=gemini_failures, observation_count=observation_number)
 
             if duration and time.monotonic() - started >= duration:
                 break
@@ -211,6 +263,7 @@ def run_smart_monitor(
     except KeyboardInterrupt:
         print("\nSmart monitor stopped.", flush=True)
 
+    _write_runtime_status(database, state="stopped", title=title, started_at=session_started_at, last_capture_at=last_capture_at, last_ocr_at=last_ocr_at, last_gemini_at=last_gemini_at, last_error=runtime_error, consecutive_failures=gemini_failures, observation_count=observation_number)
     print(
         f"Stopped. New OCR observations: {observation_number}; "
         f"total history: {store.observation_count()}.",
