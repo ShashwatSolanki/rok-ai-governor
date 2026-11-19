@@ -158,13 +158,23 @@ def main() -> int:
         except Exception as exc:
             print(f"Local OCR unavailable ({type(exc).__name__}: {exc}); asking Gemini to inspect pixels directly.", flush=True)
         print("Asking Gemini to assess the account and recommend next actions...", flush=True)
-        result = advise_with_gemini(
-            screenshot,
-            profile=args.profile,
-            database=args.database,
-            ocr_observation=local_observation,
-            model=args.model,
-        )
+        try:
+            result = advise_with_gemini(
+                screenshot,
+                profile=args.profile,
+                database=args.database,
+                ocr_observation=local_observation,
+                model=args.model,
+            )
+        except Exception as exc:
+            print(
+                f"Gemini advice unavailable ({type(exc).__name__}: {exc}). "
+                "The screenshot was captured and local OCR completed. "
+                "Try the command again in a minute; transient Gemini 429/5xx "
+                "errors are retried automatically.",
+                flush=True,
+            )
+            return 1
         output = save_advice(result, args.output)
         print(json.dumps(result, indent=2, ensure_ascii=False))
         print(f"\\nGemini advice saved: {output}")
