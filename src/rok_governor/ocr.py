@@ -15,7 +15,7 @@ _reader: easyocr.Reader | None = None
 # Normalised coordinates for the BlueStacks 5 city layout. Coordinates are
 # fractions of the full screenshot so the regions scale with window size.
 # These are initial layout presets, not universal coordinates for every screen.
-CITY_REGIONS = {
+BLUESTACKS_REGIONS = {
     "player_header": (0.08, 0.05, 0.37, 0.25),
     "food": (0.61, 0.05, 0.74, 0.15),
     "wood": (0.73, 0.05, 0.85, 0.15),
@@ -23,6 +23,18 @@ CITY_REGIONS = {
     "timers": (0.63, 0.16, 1.00, 0.39),
     "quests": (0.00, 0.45, 0.20, 0.78),
 }
+
+# Initial normalized regions calibrated from the supplied official PC client capture.
+PC_REGIONS = {
+    "player_header": (0.00, 0.00, 0.24, 0.19),
+    "food": (0.82, 0.00, 0.92, 0.075),
+    "wood": (0.91, 0.00, 1.00, 0.075),
+    "stone": (0.975, 0.00, 1.00, 0.075),
+    "timers": (0.82, 0.08, 1.00, 0.42),
+    "quests": (0.00, 0.20, 0.16, 0.72),
+}
+
+OCR_PROFILES = {"bluestacks": BLUESTACKS_REGIONS, "pc": PC_REGIONS}
 
 REVIEW_CONFIDENCE = 0.75
 
@@ -85,8 +97,10 @@ def _parse_header(detections: list[dict[str, Any]]) -> dict[str, Any]:
     return result
 
 
-def analyse_image(image_path: str | Path) -> dict[str, Any]:
+def analyse_image(image_path: str | Path, profile: str = "bluestacks") -> dict[str, Any]:
     """Read selected game UI regions and return structured OCR results."""
+    if profile not in OCR_PROFILES:
+        raise ValueError(f"Unknown OCR profile {profile!r}; choose from {', '.join(OCR_PROFILES)}")
     path = Path(image_path)
     if not path.is_file():
         raise FileNotFoundError(f"Screenshot not found: {path}")
@@ -100,7 +114,7 @@ def analyse_image(image_path: str | Path) -> dict[str, Any]:
     detections: list[dict[str, Any]] = []
     region_text: dict[str, list[str]] = {}
 
-    for region_name, (x1, y1, x2, y2) in CITY_REGIONS.items():
+    for region_name, (x1, y1, x2, y2) in OCR_PROFILES[profile].items():
         left = max(0, int(x1 * width))
         top = max(0, int(y1 * height))
         right = min(width, int(x2 * width))
@@ -158,7 +172,8 @@ def analyse_image(image_path: str | Path) -> dict[str, Any]:
     detected_resource_count = sum(value is not None for value in resources.values())
     screen_type = (
         "city"
-        if detected_resource_count >= 2 and bool(quest_text)
+        if (detected_resource_count >= 2 and bool(quest_text))
+        or (profile == "pc" and "power" in header and detected_resource_count >= 1)
         else "unknown"
     )
 
@@ -168,6 +183,7 @@ def analyse_image(image_path: str | Path) -> dict[str, Any]:
         "image_height": int(height),
         "captured_or_analysed_at": datetime.now(timezone.utc).isoformat(),
         "engine": "EasyOCR",
+        "profile": profile,
         "screen": {
             "type": screen_type,
             "confidence_note": "Heuristic based on visible resource and quest regions.",
