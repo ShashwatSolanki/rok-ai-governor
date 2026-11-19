@@ -7,13 +7,48 @@ some game clients ignore background messages.
 """
 from __future__ import annotations
 
+import ctypes
 import math
 import time
+from ctypes import wintypes
 from typing import Any
 
 
 class WindowInputError(RuntimeError):
     """A safe, window-scoped input could not be delivered."""
+
+
+class _MouseInput(ctypes.Structure):
+    _fields_ = [
+        ("dx", wintypes.LONG),
+        ("dy", wintypes.LONG),
+        ("mouseData", wintypes.DWORD),
+        ("dwFlags", wintypes.DWORD),
+        ("time", wintypes.DWORD),
+        ("dwExtraInfo", wintypes.WPARAM),
+    ]
+
+
+class _InputUnion(ctypes.Union):
+    _fields_ = [("mi", _MouseInput)]
+
+
+class _Input(ctypes.Structure):
+    _anonymous_ = ("data",)
+    _fields_ = [("type", wintypes.DWORD), ("data", _InputUnion)]
+
+
+def _send_mouse_input(flags: int, position: tuple[int, int] | None = None) -> bool:
+    """Send one mouse event using the Win32 SendInput API."""
+    x, y = position or (0, 0)
+    event = _Input(
+        type=0,  # INPUT_MOUSE
+        mi=_MouseInput(x, y, 0, flags, 0, 0),
+    )
+    send_input = ctypes.windll.user32.SendInput
+    send_input.argtypes = [wintypes.UINT, ctypes.POINTER(_Input), ctypes.c_int]
+    send_input.restype = wintypes.UINT
+    return send_input(1, ctypes.byref(event), ctypes.sizeof(_Input)) == 1
 
 
 def post_click(
@@ -117,6 +152,24 @@ def post_click(
                     raise WindowInputError(f"Could not release the background mouse button: {exc}") from exc
         delivery = "posted_to_window_not_foregrounded"
     else:
+        virtual_left = win32api.GetSystemMetrics(76)  # SM_XVIRTUALSCREEN
+        virtual_top = win32api.GetSystemMetrics(77)  # SM_YVIRTUALSCREEN
+        virtual_width = win32api.GetSystemMetrics(78)  # SM_CXVIRTUALSCREEN
+        virtual_height = win32api.GetSystemMetrics(79)  # SM_CYVIRTUALSCREEN
+        if not (
+            virtual_left <= screen_x < virtual_left + virtual_width
+            and virtual_top <= screen_y < virtual_top + virtual_height
+        ):
+            raise WindowInputError(
+                f"Calibrated click point ({screen_x}, {screen_y}) is outside the virtual desktop."
+            )
+        absolute_x = round((screen_x - virtual_left) * 65535 / max(1, virtual_width - 1))
+        absolute_y = round((screen_y - virtual_top) * 65535 / max(1, virtual_height - 1))
+        move_flags = (
+            win32con.MOUSEEVENTF_MOVE
+            | win32con.MOUSEEVENTF_ABSOLUTE
+            | win32con.MOUSEEVENTF_VIRTUALDESK
+        )
         button_down = False
         try:
             win32gui.SetForegroundWindow(hwnd)
@@ -125,13 +178,20 @@ def post_click(
                 raise WindowInputError(
                     "Could not focus the game window; foreground input was not sent."
                 )
-            win32api.SetCursorPos((screen_x, screen_y))
-            if tuple(win32api.GetCursorPos()) != (screen_x, screen_y):
+            if not _send_mouse_input(move_flags, (absolute_x, absolute_y)):
                 raise WindowInputError(
-                    "Windows did not move the pointer to the calibrated click target."
+                    "Windows rejected the calibrated foreground pointer movement. "
+                    "The click was not sent."
+                )
+            actual_cursor = tuple(win32api.GetCursorPos())
+            if actual_cursor != (screen_x, screen_y):
+                raise WindowInputError(
+                    "Windows did not move the pointer to the calibrated click target; "
+                    f"expected {(screen_x, screen_y)}, got {actual_cursor}. Click withheld."
                 )
             button_down = True
-            win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
+            if not _send_mouse_input(win32con.MOUSEEVENTF_LEFTDOWN):
+                raise WindowInputError("Windows rejected the foreground mouse-down event.")
             time.sleep(hold_seconds)
         except WindowInputError:
             raise
@@ -140,7 +200,8 @@ def post_click(
         finally:
             if button_down:
                 try:
-                    win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+                    if not _send_mouse_input(win32con.MOUSEEVENTF_LEFTUP):
+                        raise WindowInputError("Windows rejected the foreground mouse-up event.")
                 except Exception as exc:
                     raise WindowInputError(f"Could not release the foreground mouse button: {exc}") from exc
         delivery = "sent_to_foreground_window"

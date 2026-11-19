@@ -11,7 +11,7 @@ from unittest.mock import patch
 from rok_governor.execution_store import ExecutionStore
 from rok_governor.smart_monitor import _change_ratio, _frame_signature
 from rok_governor.window_capture import save_window_image
-from rok_governor.input_controller import post_click
+from rok_governor.input_controller import _send_mouse_input, post_click
 from rok_governor.window_capture import find_child_windows
 
 
@@ -87,6 +87,18 @@ class FrameCaptureTests(unittest.TestCase):
 
 
 class InputControllerTests(unittest.TestCase):
+    def test_sendinput_packs_mouse_event_without_sending_real_input(self):
+        with patch(
+            "rok_governor.input_controller.ctypes.windll.user32.SendInput",
+            return_value=1,
+        ) as send_input:
+            self.assertTrue(_send_mouse_input(0x0001, (123, 456)))
+
+        event = send_input.call_args.args[1]._obj
+        self.assertEqual(event.type, 0)
+        self.assertEqual((event.mi.dx, event.mi.dy), (123, 456))
+        self.assertEqual(event.mi.dwFlags, 0x0001)
+
     def setUp(self):
         import win32gui
 
@@ -123,16 +135,19 @@ class InputControllerTests(unittest.TestCase):
 
         foreground = patch.object(self.win32gui, "GetForegroundWindow", return_value=42)
         set_focus = patch.object(self.win32gui, "SetForegroundWindow")
-        cursor = patch.object(win32api, "SetCursorPos")
         cursor_position = patch.object(win32api, "GetCursorPos", return_value=(600, 450))
-        mouse = patch.object(win32api, "mouse_event")
+        metrics = patch.object(
+            win32api, "GetSystemMetrics",
+            side_effect=lambda index: {76: 0, 77: 0, 78: 1920, 79: 1080}[index],
+        )
+        send_input = patch("rok_governor.input_controller._send_mouse_input", return_value=True)
         sleeper = patch("rok_governor.input_controller.time.sleep")
-        for mocked in (foreground, set_focus, cursor, cursor_position, mouse, sleeper):
+        for mocked in (foreground, set_focus, cursor_position, metrics, send_input, sleeper):
             self.addCleanup(mocked.stop)
         set_focus_mock = set_focus.start()
-        cursor_mock = cursor.start()
         cursor_position_mock = cursor_position.start()
-        mouse_mock = mouse.start()
+        metrics.start()
+        send_input_mock = send_input.start()
         foreground.start()
         sleeper.start()
 
@@ -142,11 +157,14 @@ class InputControllerTests(unittest.TestCase):
         )
 
         set_focus_mock.assert_called_once_with(42)
-        cursor_mock.assert_called_once_with((600, 450))
         cursor_position_mock.assert_called_once_with()
         self.assertEqual(
-            [call.args[0] for call in mouse_mock.call_args_list],
-            [win32con.MOUSEEVENTF_LEFTDOWN, win32con.MOUSEEVENTF_LEFTUP],
+            [call.args[0] for call in send_input_mock.call_args_list],
+            [
+                win32con.MOUSEEVENTF_MOVE | win32con.MOUSEEVENTF_ABSOLUTE | win32con.MOUSEEVENTF_VIRTUALDESK,
+                win32con.MOUSEEVENTF_LEFTDOWN,
+                win32con.MOUSEEVENTF_LEFTUP,
+            ],
         )
         self.assertEqual(result["delivery"], "sent_to_foreground_window")
 
@@ -167,9 +185,9 @@ class InputControllerTests(unittest.TestCase):
 
         with patch.object(self.win32gui, "SetForegroundWindow"), patch.object(
             self.win32gui, "GetForegroundWindow", return_value=42
-        ), patch.object(win32api, "SetCursorPos"), patch.object(
-            win32api, "GetCursorPos", return_value=(0, 0)
-        ), patch.object(win32api, "mouse_event") as mouse, patch(
+        ), patch.object(win32api, "GetSystemMetrics", side_effect=lambda i: {76: 0, 77: 0, 78: 1920, 79: 1080}[i]), patch(
+            "win32api.GetCursorPos", return_value=(0, 0)
+        ), patch("rok_governor.input_controller._send_mouse_input", return_value=True) as send_input, patch(
             "rok_governor.input_controller.time.sleep"
         ):
             from rok_governor.input_controller import WindowInputError
@@ -179,21 +197,19 @@ class InputControllerTests(unittest.TestCase):
                     "RoK", x_normalized=500, y_normalized=500,
                     screenshot_size=(1000, 700), input_mode="foreground",
                 )
-            mouse.assert_not_called()
+            self.assertEqual(send_input.call_count, 1)
 
     def test_background_mode_posts_messages_without_moving_pointer(self):
         import win32api
         import win32con
 
         post_message = patch.object(self.win32gui, "PostMessage")
-        cursor = patch.object(win32api, "SetCursorPos")
-        mouse = patch.object(win32api, "mouse_event")
+        send_input = patch("rok_governor.input_controller._send_mouse_input")
         sleeper = patch("rok_governor.input_controller.time.sleep")
-        for mocked in (post_message, cursor, mouse, sleeper):
+        for mocked in (post_message, send_input, sleeper):
             self.addCleanup(mocked.stop)
         post_message_mock = post_message.start()
-        cursor_mock = cursor.start()
-        mouse_mock = mouse.start()
+        send_input_mock = send_input.start()
         sleeper.start()
 
         result = post_click(
@@ -205,8 +221,7 @@ class InputControllerTests(unittest.TestCase):
             [call.args[1] for call in post_message_mock.call_args_list],
             [win32con.WM_MOUSEMOVE, win32con.WM_LBUTTONDOWN, win32con.WM_LBUTTONUP],
         )
-        cursor_mock.assert_not_called()
-        mouse_mock.assert_not_called()
+        send_input_mock.assert_not_called()
         self.assertEqual(result["delivery"], "posted_to_window_not_foregrounded")
 
 
