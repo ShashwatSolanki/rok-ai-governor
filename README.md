@@ -1,8 +1,8 @@
 # RoK AI Governor
 
-A read-only game observer with a Gemini strategy layer that turns visible Rise of Kingdoms state into prioritized recommendations and structured, player-performed command cards.
+A Gemini-powered secondary-account governor for Rise of Kingdoms. It observes the selected PC game window, reasons about the visible account state, and can dispatch a tightly bounded set of low-risk background clicks without taking focus away from other apps. It does not inspect game memory, modify the client, or connect to game services.
 
-> **Safety scope:** This project is an advisory tool. It does not automate gameplay, send inputs to the game, inspect game memory, modify the client, or connect to game services. Check the game's current terms before using third-party tools alongside your account.
+> **Automation scope:** unattended input is limited to visible, low-risk routine actions (screen inspection/navigation and gathering starts) with explicit Gemini coordinates, a confidence threshold, an allow-list, idempotency, and an execution audit. Purchases, gems, rare items, upgrades, troop training, text entry, and other higher-risk actions are not automated. Check the game's current terms before using third-party tools alongside your account.
 
 ## Current capabilities
 
@@ -13,8 +13,9 @@ A read-only game observer with a Gemini strategy layer that turns visible Rise o
 - Optionally send a screenshot and OCR hints to Gemini for structured visual interpretation.
 - Save observations as JSON for later review.
 - Keep Gemini optional: local OCR works without an API key.
-- Ask Gemini to produce structured action commands with targets, preconditions, ordered steps, risk, confidence, and verification criteria.
-- Persist command proposals in a separate queue and let the player record manual completion or dismissal.
+- Ask Gemini to produce structured action commands with visible targets, preconditions, normalized click coordinates, risk, confidence, and verification criteria.
+- Optionally dispatch at most one eligible command per Gemini cycle through background window messages (no desktop-wide mouse movement and no foreground activation).
+- Persist command proposals and an idempotent execution audit in SQLite.
 
 ## Requirements
 
@@ -96,13 +97,16 @@ Start the resilient background monitor for the official PC client:
 python -m rok_governor run --title "万国覚醒"
 ```
 
-The `run` command enables Gemini strategy reviews automatically, samples the game window every two seconds, runs OCR after meaningful visual changes or on the heartbeat, and syncs recommendations and visual task reviews to the local SQLite database. Gemini runs on its own schedule (default: every 180 seconds), independently of OCR; a local OCR failure does not block Gemini from interpreting the current screenshot. Gemini API failures use a separate exponential retry schedule, while capture or other monitor failures are recovered by the supervisor (5, 10, 20, 40, then at most 60 seconds). Unchanged diagnostic screenshots are discarded, and the screenshot folder is capped at the newest 200 retained captures. Use `Ctrl+C` to stop.
+The `run` command enables Gemini strategy reviews and bounded background input by default. It samples the game window every two seconds, runs OCR after meaningful visual changes or on the heartbeat, and syncs recommendations, visual task reviews, and execution attempts to the local SQLite database. Use `--observe-only` to disable all input. Gemini runs on its own schedule (default: every 180 seconds), independently of OCR; a local OCR failure does not block Gemini from interpreting the current screenshot. Gemini API failures use a separate exponential retry schedule, while capture or other monitor failures are recovered by the supervisor (5, 10, 20, 40, then at most 60 seconds). Unchanged diagnostic screenshots are discarded, and the screenshot folder is capped at the newest 200 retained captures. Use `Ctrl+C` to stop.
 
 Useful overrides:
 
 ```powershell
 python -m rok_governor run --title "万国覚醒" --gemini-interval 300 --heartbeat 45
 python -m rok_governor run --title "万国覚醒" --duration 3600
+
+# Disable game input while keeping Gemini monitoring enabled
+python -m rok_governor run --title "万国覚醒" --observe-only
 ```
 
 Inspect the latest runtime heartbeat from another terminal:
@@ -141,9 +145,9 @@ Dismiss a proposal instead:
 python -m rok_governor command-done 1 --status dismissed
 ```
 
-These are structured instructions for the human player, not executable macros. The command queue deliberately does not send mouse/keyboard input, invoke shell commands, spend currency, use items, or perform irreversible account changes. If Gemini cannot establish a target or prerequisite from the current screenshot, it should propose inspecting the relevant screen rather than guessing.
+Commands without eligible input actions remain in this queue for manual review. The unattended controller supports only explicit left-clicks on visible controls, limited to inspect_screen, open_menu, select_tab, and start_gathering, with Gemini confidence of at least 0.88 and a low-risk label. Each command fingerprint is reserved before dispatch so a failed or repeated Gemini response cannot replay it automatically. Every attempted action is logged in SQLite. A post-action screenshot is saved, but a posted Windows message is not proof the game accepted the click; the next visual assessment must confirm the result.
 
-This is unattended monitoring and decision support, not unattended gameplay: it does not click, type, dispatch marches, collect rewards, spend resources, or otherwise control the game. Gemini recommendations remain suggestions and should be checked against the actual screen. Keep the game window restored (it may sit behind other windows); minimised GPU rendering can produce stale or blank captures. Gemini calls use API quota and send screenshots to Google.
+Background input is best-effort: some game/emulator renderers ignore Windows background mouse messages. In that case the governor records the failure and does not fall back to foreground/desktop clicks. Keep the game window restored (it may sit behind other windows); minimised GPU rendering can produce stale or blank captures. Gemini calls use API quota and send screenshots to Google. The first unattended run should be watched closely while you confirm that your specific client accepts background input.
 
 ## Project layout
 
@@ -159,6 +163,8 @@ src/rok_governor/
   account_store.py
   task_store.py
   command_store.py
+  execution_store.py
+  input_controller.py
   smart_monitor.py
   cli.py
 screenshots/       # local captures (git-ignored)
@@ -173,4 +179,4 @@ observations/      # local JSON output (git-ignored)
 3. Reconcile legacy duplicate tasks and improve long-term task lifecycle/history.
 4. Expand account context and user-configurable farm objectives.
 
-No unattended gameplay or automated in-game actions are included.
+Only allow-listed, low-risk background click actions are automated; broader gameplay actions are deliberately excluded.
