@@ -3,6 +3,7 @@
 import argparse
 import json
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .capture import capture_primary_monitor
@@ -289,7 +290,15 @@ def main() -> int:
         print(f"State: {health.get('state', 'unknown')}")
         print(f"Mode: {health.get('mode', 'unknown')}")
         print(f"Game window: {health.get('window_title', 'unknown')}")
-        print(f"Last heartbeat: {health.get('updated_at') or 'never'}")
+        heartbeat = health.get("updated_at")
+        print(f"Last heartbeat: {heartbeat or 'never'}")
+        if heartbeat:
+            try:
+                heartbeat_time = datetime.fromisoformat(heartbeat)
+                age_seconds = max(0, int((datetime.now(timezone.utc) - heartbeat_time).total_seconds()))
+                print(f"Heartbeat age: {age_seconds}s" + (" (possibly stale)" if age_seconds > 180 else ""))
+            except ValueError:
+                print("Heartbeat age: unavailable (invalid timestamp)")
         print(f"Last capture: {health.get('last_capture_at') or 'never'}")
         print(f"Last OCR success: {health.get('last_ocr_at') or 'never'}")
         print(f"Last Gemini success: {health.get('last_gemini_at') or 'never'}")
