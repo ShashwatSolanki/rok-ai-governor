@@ -36,6 +36,9 @@ PC_REGIONS = {
     "gems": (0.945, 0.00, 0.995, 0.075),
     "timers": (0.82, 0.08, 1.00, 0.42),
     "quests": (0.00, 0.20, 0.16, 0.72),
+    # Commander detail panel and roster are separate from the city HUD.
+    "commander_panel": (0.64, 0.17, 0.995, 0.76),
+    "commander_roster": (0.00, 0.07, 0.23, 0.80),
 }
 
 OCR_PROFILES = {"bluestacks": BLUESTACKS_REGIONS, "pc": PC_REGIONS}
@@ -188,8 +191,56 @@ def analyse_image(image_path: str | Path, profile: str = "bluestacks") -> dict[s
     quest_text = region_text.get("quests", [])
     timer_text = region_text.get("timers", [])
     detected_resource_count = sum(value is not None for value in resources.values())
+    commander_detections = [
+        item for item in detections if item["region"] == "commander_panel"
+    ]
+    commander_text = " ".join(item["text"] for item in commander_detections)
+    commander_text_lower = commander_text.lower()
+    commander_signals = sum(
+        marker in commander_text_lower
+        for marker in ("star level", "unit capacity", "talents", "skills", "garrison")
+    )
+    is_commander_screen = commander_signals >= 2
+
+    commander: dict[str, Any] | None = None
+    if is_commander_screen:
+        level_match = re.search(r"\\b(?:level\\s*)?(\\d{1,2})\\s*/\\s*(\\d{1,2})\\b", commander_text, re.IGNORECASE)
+        capacity_match = re.search(r"unit\\s+capacity\\s*[: ]*([\\d,]+)", commander_text, re.IGNORECASE)
+        role_labels = (
+            "Infantry", "Cavalry", "Archer", "Leadership", "Garrison",
+            "Skill", "Gathering", "Peacekeeping", "Support", "Conquering",
+            "Versatility",
+        )
+        found_roles = [
+            role for role in role_labels
+            if re.search(rf"\\b{re.escape(role)}\\b", commander_text, re.IGNORECASE)
+        ]
+        commander = {
+            "selected_commander_text": commander_text,
+            "level": (
+                {"value": int(level_match.group(1)), "maximum": int(level_match.group(2))}
+                if level_match else None
+            ),
+            "unit_capacity": (
+                int(capacity_match.group(1).replace(",", ""))
+                if capacity_match else None
+            ),
+            "role_labels": found_roles,
+            "name_candidates": [
+                item["text"] for item in commander_detections
+                if len(item["text"].strip()) >= 4
+                and not any(
+                    marker in item["text"].lower()
+                    for marker in ("star level", "unit capacity", "talents", "skills")
+                )
+            ],
+            "note": "Text-only extraction; portrait identity and skill details may need visual review.",
+        }
+
     screen_type = (
-        "city"
+        "commander"
+        if is_commander_screen
+        else "city"
         if (detected_resource_count >= 2 and bool(quest_text))
         or (profile == "pc" and "power" in header and detected_resource_count >= 1)
         else "unknown"
@@ -204,11 +255,12 @@ def analyse_image(image_path: str | Path, profile: str = "bluestacks") -> dict[s
         "profile": profile,
         "screen": {
             "type": screen_type,
-            "confidence_note": "Heuristic based on visible resource and quest regions.",
+            "confidence_note": "Heuristic based on screen-specific text signals and visible HUD regions.",
         },
         "account_state": {
             **header,
             "resources": resources,
+            **({"selected_commander": commander} if commander is not None else {}),
         },
         "regions": {
             name: texts for name, texts in region_text.items()
