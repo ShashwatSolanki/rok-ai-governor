@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -51,8 +52,9 @@ class TaskStore:
                 action = str(item.get("action") or "").strip()
                 if not action:
                     continue
-                category = str(item.get("category") or "other")
-                fingerprint = hashlib.sha256((category.casefold() + "::" + action.casefold()).encode()).hexdigest()
+                category = str(item.get("category") or "other").strip().casefold()
+                canonical_action = " ".join(unicodedata.normalize("NFKC", action).casefold().split())
+                fingerprint = hashlib.sha256((category + "::" + canonical_action).encode("utf-8")).hexdigest()
                 cur = db.execute("""INSERT INTO governor_tasks
                     (fingerprint, action, category, priority, why, visual_evidence,
                      confidence, uncertainties_json, manual_steps_json, first_seen,
