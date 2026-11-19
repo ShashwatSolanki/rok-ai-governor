@@ -57,6 +57,24 @@ def build_parser() -> argparse.ArgumentParser:
         "--gemini-model", default=None,
         help="Optional Gemini model override (or set GEMINI_MODEL in .env).",
     )
+    watch_parser = subparsers.add_parser(
+        "watch", help="Periodically capture and record read-only observations of the RoK PC window."
+    )
+    watch_parser.add_argument(
+        "--title", default="万国覚醒",
+        help="Case-insensitive game window title substring (default: 万国覚醒).",
+    )
+    watch_parser.add_argument("--interval", type=int, default=60, help="Seconds between scans.")
+    watch_parser.add_argument("--duration", type=int, default=0, help="Stop after this many seconds; 0 runs until Ctrl+C.")
+    watch_parser.add_argument("--profile", choices=("bluestacks", "pc"), default="pc")
+    watch_parser.add_argument("--database", default="data/account_history.sqlite3")
+    watch_parser.add_argument("--screenshot-dir", default="screenshots")
+    watch_parser.add_argument("--output-dir", default="observations")
+
+    status_parser = subparsers.add_parser(
+        "status", help="Show the latest known account fields from the local history database."
+    )
+    status_parser.add_argument("--database", default="data/account_history.sqlite3")
     return parser
 
 
