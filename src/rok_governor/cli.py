@@ -90,6 +90,16 @@ def build_parser() -> argparse.ArgumentParser:
     smart_parser.add_argument("--screenshot-dir", default="screenshots")
     smart_parser.add_argument("--output-dir", default="observations")
 
+    advise_parser = subparsers.add_parser(
+        "advise", help="Capture the current game screen and ask Gemini what to do next."
+    )
+    advise_parser.add_argument("--title", default="万国覚醒")
+    advise_parser.add_argument("--profile", choices=("bluestacks", "pc"), default="pc")
+    advise_parser.add_argument("--database", default="data/account_history.sqlite3")
+    advise_parser.add_argument("--screenshot-dir", default="screenshots")
+    advise_parser.add_argument("--output", default="data/latest_gemini_advice.json")
+    advise_parser.add_argument("--model", default=None)
+
     plan_parser = subparsers.add_parser(
         "plan", help="Generate a prioritized farm plan from the latest account state."
     )
@@ -128,6 +138,31 @@ def main() -> int:
 
         output = capture_window(args.title, args.output_dir)
         print(f"Window screenshot saved: {output}")
+        return 0
+
+    if args.command == "advise":
+        from .window_capture import capture_window
+        from .gemini_advisor import advise_with_gemini, save_advice
+
+        print("Capturing current RoK window...", flush=True)
+        screenshot = capture_window(args.title, args.screenshot_dir)
+        local_observation = None
+        try:
+            print("Running local OCR as supporting evidence...", flush=True)
+            local_observation = analyse_image(screenshot, profile=args.profile)
+        except Exception as exc:
+            print(f"Local OCR unavailable ({type(exc).__name__}: {exc}); asking Gemini to inspect pixels directly.", flush=True)
+        print("Asking Gemini to assess the account and recommend next actions...", flush=True)
+        result = advise_with_gemini(
+            screenshot,
+            profile=args.profile,
+            database=args.database,
+            ocr_observation=local_observation,
+            model=args.model,
+        )
+        output = save_advice(result, args.output)
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+        print(f"\\nGemini advice saved: {output}")
         return 0
 
     if args.command == "plan":
