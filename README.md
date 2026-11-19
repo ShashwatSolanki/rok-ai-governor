@@ -86,6 +86,25 @@ Window capture uses Windows `PrintWindow` with `PW_RENDERFULLCONTENT`. This asks
 
 The first OCR run may download EasyOCR model weights. OCR and Gemini output are both approximate. Gemini is a second opinion, not ground truth; compare its output with local OCR and the original screenshot. Missing or uncertain values must remain unknown rather than being guessed.
 
+### Continuous Gemini governor
+
+Start the resilient background monitor for the official PC client:
+
+```powershell
+python -m rok_governor run --title "万国覚醒"
+```
+
+The `run` command enables Gemini strategy reviews automatically, samples the game window every two seconds, runs OCR after meaningful visual changes or on the heartbeat, and syncs recommendations and visual task reviews to the local SQLite database. Gemini is called no more often than the configured interval (default: 180 seconds). If capture or analysis raises an exception, the supervisor retries with exponential backoff (5, 10, 20, 40, then at most 60 seconds). Use `Ctrl+C` to stop.
+
+Useful overrides:
+
+```powershell
+python -m rok_governor run --title "万国覚醒" --gemini-interval 300 --heartbeat 45
+python -m rok_governor run --title "万国覚醒" --duration 3600
+```
+
+This is unattended monitoring and decision support, not unattended gameplay: it does not click, type, dispatch marches, collect rewards, spend resources, or otherwise control the game. Gemini recommendations remain suggestions and should be checked against the actual screen. Keep the game window restored (it may sit behind other windows); minimised GPU rendering can produce stale or blank captures. Gemini calls use API quota and send screenshots to Google.
+
 ## Project layout
 
 ```text
