@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -180,6 +181,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    if hasattr(sys.stdout, "reconfigure"):
+        # Windows terminals may still use a legacy code page that cannot encode
+        # the game's Japanese title. Escape only unsupported characters rather
+        # than crashing a diagnostic command such as `health`.
+        sys.stdout.reconfigure(errors="backslashreplace")
     args = build_parser().parse_args()
 
     if args.command == "capture":
