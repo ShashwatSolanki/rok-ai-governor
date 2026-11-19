@@ -38,11 +38,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     analyse_parser = subparsers.add_parser(
-        "analyze", help="Run OCR on an existing screenshot."
+        "analyze", help="Run local OCR on a screenshot, optionally with Gemini."
     )
     analyse_parser.add_argument("image", type=Path, help="Path to screenshot.")
     analyse_parser.add_argument(
         "--output-dir", default="observations", help="Directory for JSON results."
+    )
+    analyse_parser.add_argument(
+        "--gemini", action="store_true",
+        help="Also send the screenshot to Gemini for visual interpretation (uses API quota).",
+    )
+    analyse_parser.add_argument(
+        "--gemini-model", default=None,
+        help="Optional Gemini model override (or set GEMINI_MODEL in .env).",
     )
     return parser
 
@@ -76,6 +84,12 @@ def main() -> int:
 
     if args.command == "analyze":
         observation = analyse_image(args.image)
+        if args.gemini:
+            from .gemini_vision import analyse_with_gemini
+
+            observation["gemini_vision"] = analyse_with_gemini(
+                args.image, ocr_observation=observation, model=args.gemini_model
+            )
         output = save_observation(observation, args.output_dir)
         print(json.dumps(observation, indent=2, ensure_ascii=False))
         print(f"\nJSON observation saved: {output}")
