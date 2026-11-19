@@ -38,7 +38,7 @@ pip install -e .
 3. Put your key in `.env` as the value of `GEMINI_API_KEY`.
 4. Keep `.env` private. It is ignored by Git; never paste your key into source code, chat, or GitHub.
 
-The default model is `gemini-3.8-flash`. You can override it by setting `GEMINI_MODEL` in `.env` or passing `--gemini-model` to the command. Model availability can depend on your Google AI Studio project.
+The default model is `gemini-3.6-flash`. You can override it by setting `GEMINI_MODEL` in `.env` or passing `--gemini-model` to the command. Model availability can depend on your Google AI Studio project.
 
 Gemini requests send the selected screenshot and a small summary of local OCR output to Google's API. Use `--gemini` only when you want that external analysis and associated API usage. Local OCR remains available without Gemini.
 
@@ -94,7 +94,7 @@ Start the resilient background monitor for the official PC client:
 python -m rok_governor run --title "万国覚醒"
 ```
 
-The `run` command enables Gemini strategy reviews automatically, samples the game window every two seconds, runs OCR after meaningful visual changes or on the heartbeat, and syncs recommendations and visual task reviews to the local SQLite database. Gemini is called no more often than the configured interval (default: 180 seconds). If capture or analysis raises an exception, the supervisor retries with exponential backoff (5, 10, 20, 40, then at most 60 seconds). Use `Ctrl+C` to stop.
+The `run` command enables Gemini strategy reviews automatically, samples the game window every two seconds, runs OCR after meaningful visual changes or on the heartbeat, and syncs recommendations and visual task reviews to the local SQLite database. Gemini runs on its own schedule (default: every 180 seconds), independently of OCR; a local OCR failure does not block Gemini from interpreting the current screenshot. Gemini API failures use a separate exponential retry schedule, while capture or other monitor failures are recovered by the supervisor (5, 10, 20, 40, then at most 60 seconds). Unchanged diagnostic screenshots are discarded to prevent unbounded disk growth. Use `Ctrl+C` to stop.
 
 Useful overrides:
 
@@ -123,9 +123,9 @@ observations/      # local JSON output (git-ignored)
 
 ## Next milestones
 
-1. Validate and reconcile local OCR with Gemini observations.
-2. Add screen-type-specific extractors for city, map, commander, building, and research views.
-3. Store user-reviewed observations in a local account history.
-4. Generate recommendations from confirmed observations and maintained game knowledge.
+1. Improve screen-specific visual interpretation and confidence tracking.
+2. Add clearer runtime health reporting, structured logs, and recovery diagnostics.
+3. Improve recommendation identity and task-history reconciliation.
+4. Expand account context and user-configurable farm objectives.
 
 No unattended gameplay or automated in-game actions are included.
