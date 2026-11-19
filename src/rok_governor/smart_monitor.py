@@ -232,6 +232,7 @@ def run_smart_monitor(
                         from .input_controller import execute_safe_actions, WindowInputError
 
                         execution_store = ExecutionStore(database)
+                        execution_reviews_saved = execution_store.record_reviews(advice)
                         candidate_commands = (
                             (advice.get("advice") or {}).get("commands") or []
                         ) if automation_enabled else []
@@ -274,14 +275,15 @@ def run_smart_monitor(
                                 sent = execute_safe_actions(title, proposed)
                                 execution_store.finish(
                                     proposed, "posted",
-                                    {"input_results": sent, "verification_status": "awaiting_post_action_capture"},
+                                    {"input_results": sent, "verification_criteria": proposed.get("verification"), "verification_status": "awaiting_post_action_capture"},
                                 )
                                 time.sleep(1.2)
                                 try:
                                     verification_frame = capture_window(title, screenshot_dir)
                                     execution_store.finish(
                                         proposed, "posted",
-                                        {"input_results": sent, "post_action_screenshot": str(verification_frame),
+                                        {"input_results": sent, "verification_criteria": proposed.get("verification"),
+                                         "post_action_screenshot": str(verification_frame),
                                          "verification_status": "awaiting_next_visual_assessment"},
                                     )
                                     keep_screenshot = True
@@ -323,7 +325,8 @@ def run_smart_monitor(
                             f"Gemini recommendations saved: {advice_path}; "
                             f"task queue synced ({synced} recommendation(s)); "
                             f"visual reviews saved ({reviews_saved}); "
-                            f"structured commands queued ({commands_saved}).",
+                            f"structured commands queued ({commands_saved}); "
+                            f"previous actions visually reviewed ({execution_reviews_saved}).",
                             flush=True,
                         )
                         gemini_failures = 0
