@@ -71,6 +71,25 @@ def build_parser() -> argparse.ArgumentParser:
     watch_parser.add_argument("--screenshot-dir", default="screenshots")
     watch_parser.add_argument("--output-dir", default="observations")
 
+    smart_parser = subparsers.add_parser(
+        "monitor", help="Continuously sample the game window and run OCR only on changes."
+    )
+    smart_parser.add_argument("--title", default="万国覚醒")
+    smart_parser.add_argument("--sample-interval", type=float, default=1.0,
+                              help="Seconds between lightweight frame samples.")
+    smart_parser.add_argument("--change-threshold", type=float, default=0.025,
+                              help="Changed-pixel ratio required to trigger OCR.")
+    smart_parser.add_argument("--stable-frames", type=int, default=2,
+                              help="Consecutive changed samples required before OCR.")
+    smart_parser.add_argument("--heartbeat", type=float, default=30.0,
+                              help="Run OCR at least this often, even without visual changes.")
+    smart_parser.add_argument("--duration", type=int, default=0,
+                              help="Stop after this many seconds; 0 runs until Ctrl+C.")
+    smart_parser.add_argument("--profile", choices=("bluestacks", "pc"), default="pc")
+    smart_parser.add_argument("--database", default="data/account_history.sqlite3")
+    smart_parser.add_argument("--screenshot-dir", default="screenshots")
+    smart_parser.add_argument("--output-dir", default="observations")
+
     status_parser = subparsers.add_parser(
         "status", help="Show the latest known account fields from the local history database."
     )
@@ -152,6 +171,23 @@ def main() -> int:
                 time.sleep(max(0, args.interval - elapsed))
         except KeyboardInterrupt:
             print("\\nStopped watching.")
+        return 0
+
+    if args.command == "monitor":
+        from .smart_monitor import run_smart_monitor
+
+        run_smart_monitor(
+            title=args.title,
+            sample_interval=args.sample_interval,
+            change_threshold=args.change_threshold,
+            stable_frames=args.stable_frames,
+            heartbeat=args.heartbeat,
+            duration=args.duration,
+            profile=args.profile,
+            database=args.database,
+            screenshot_dir=args.screenshot_dir,
+            output_dir=args.output_dir,
+        )
         return 0
 
     if args.command == "analyze":
