@@ -89,6 +89,11 @@ def build_parser() -> argparse.ArgumentParser:
     smart_parser.add_argument("--database", default="data/account_history.sqlite3")
     smart_parser.add_argument("--screenshot-dir", default="screenshots")
     smart_parser.add_argument("--output-dir", default="observations")
+    smart_parser.add_argument("--gemini", action="store_true",
+                              help="Ask Gemini for strategy recommendations periodically.")
+    smart_parser.add_argument("--gemini-interval", type=float, default=180.0,
+                              help="Minimum seconds between Gemini strategy requests.")
+    smart_parser.add_argument("--gemini-model", default=None)
 
     advise_parser = subparsers.add_parser(
         "advise", help="Capture the current game screen and ask Gemini what to do next."
@@ -237,6 +242,9 @@ def main() -> int:
             database=args.database,
             screenshot_dir=args.screenshot_dir,
             output_dir=args.output_dir,
+            gemini_enabled=args.gemini,
+            gemini_interval=args.gemini_interval,
+            gemini_model=args.gemini_model,
         )
         return 0
 
