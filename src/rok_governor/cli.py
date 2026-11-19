@@ -13,7 +13,7 @@ from .ocr import analyse_image, save_observation
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="rok-governor",
-        description="Read-only screenshot capture and OCR for RoK.",
+        description="Gemini-powered Rise of Kingdoms account governor.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -163,7 +163,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--status", choices=("proposed", "completed", "dismissed", "all"), default="proposed"
     )
     command_done_parser = subparsers.add_parser(
-        "command-done", help="Record that you manually performed or dismissed a proposed command."
+        "command-done", help="Record manual completion or dismissal of a proposed command."
     )
     command_done_parser.add_argument("command_id", type=int)
     command_done_parser.add_argument("--status", choices=("completed", "dismissed", "proposed"), default="completed")
@@ -267,8 +267,8 @@ def main() -> int:
                 print(f"   {index}. {step}")
             if item["verification"]:
                 print(f"   Verify: {item['verification']}")
-            print(f"   Record after you perform it: python -m rok_governor command-done {item['id']}")
-        print("Eligible low-risk actions may be dispatched by the background governor; other proposals remain manual.")
+            print(f"   Record after manual completion/confirmation: python -m rok_governor command-done {item['id']}")
+        print("The background governor may dispatch eligible low-risk proposals; check automation-log for posted input.")
         return 0
 
     if args.command == "automation-log":
