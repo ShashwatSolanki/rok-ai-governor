@@ -44,6 +44,7 @@ def _write_runtime_status(
     last_error: str | None = None,
     consecutive_failures: int = 0,
     observation_count: int = 0,
+    automation_enabled: bool = False,
 ) -> Path:
     """Atomically publish a small health snapshot beside the local database."""
     path = Path(database).with_name("runtime_status.json")
@@ -51,7 +52,7 @@ def _write_runtime_status(
     payload = {
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "state": state,
-        "mode": "read_only",
+        "mode": "background_automation" if automation_enabled else "observe_only",
         "window_title": title,
         "started_at": started_at,
         "last_capture_at": last_capture_at,
@@ -138,13 +139,13 @@ def run_smart_monitor(
         flush=True,
     )
 
-    _write_runtime_status(database, state="starting", title=title, started_at=session_started_at)
+    _write_runtime_status(database, state="starting", title=title, started_at=session_started_at, automation_enabled=automation_enabled and gemini_enabled)
     try:
         while True:
             loop_started = time.monotonic()
             screenshot = capture_window(title, screenshot_dir)
             last_capture_at = datetime.now(timezone.utc).isoformat()
-            _write_runtime_status(database, state="running", title=title, started_at=session_started_at, last_capture_at=last_capture_at, last_ocr_at=last_ocr_at, last_gemini_at=last_gemini_at, last_error=runtime_error, observation_count=observation_number)
+            _write_runtime_status(database, state="running", title=title, started_at=session_started_at, last_capture_at=last_capture_at, last_ocr_at=last_ocr_at, last_gemini_at=last_gemini_at, last_error=runtime_error, observation_count=observation_number, automation_enabled=automation_enabled and gemini_enabled)
             keep_screenshot = False
             try:
                 signature = _frame_signature(screenshot)
@@ -443,6 +444,7 @@ def run_resilient_monitor(
                 last_error=previous_health.get("last_error"),
                 consecutive_failures=failures,
                 observation_count=previous_health.get("observations_this_session", 0),
+                automation_enabled=automation_enabled,
             )
             print("\\nGovernor stopped by user.", flush=True)
             return 0
