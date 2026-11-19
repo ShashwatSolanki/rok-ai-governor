@@ -1,4 +1,4 @@
-"""Command-line interface for screenshot capture and OCR."""
+"""Command-line interface for the Gemini-powered RoK account governor."""
 
 import argparse
 import json
