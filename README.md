@@ -136,8 +136,8 @@ observations/      # local JSON output (git-ignored)
 ## Next milestones
 
 1. Improve screen-specific visual interpretation and confidence tracking.
-2. Add clearer runtime health reporting, structured logs, and recovery diagnostics.
-3. Improve recommendation identity and task-history reconciliation.
+2. Add structured rotating logs and richer recovery diagnostics beyond the runtime heartbeat.
+3. Reconcile legacy duplicate tasks and improve long-term task lifecycle/history.
 4. Expand account context and user-configurable farm objectives.
 
 No unattended gameplay or automated in-game actions are included.
