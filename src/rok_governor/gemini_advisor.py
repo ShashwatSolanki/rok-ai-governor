@@ -57,9 +57,10 @@ ADVICE_SCHEMA = {
                     "verification": {"type": "STRING"},
                     "rationale": {"type": "STRING"},
                     "risk": {"type": "STRING", "enum": ["low", "medium", "high", "unknown"]},
-                    "confidence": {"type": "NUMBER"}
+                    "confidence": {"type": "NUMBER"},
+                    "input_actions": {"type": "ARRAY", "items": {"type": "OBJECT", "properties": {"type": {"type": "STRING", "enum": ["click"]}, "x": {"type": "INTEGER"}, "y": {"type": "INTEGER"}, "purpose": {"type": "STRING"}}, "required": ["type", "x", "y", "purpose"]}}
                 },
-                "required": ["action_type", "title", "target", "parameters", "preconditions", "steps", "verification", "rationale", "risk", "confidence"]
+                "required": ["action_type", "title", "target", "parameters", "preconditions", "steps", "verification", "rationale", "risk", "confidence", "input_actions"]
             }
         },
         "task_reviews": {
@@ -140,7 +141,7 @@ def advise_with_gemini(
             "For each recommended action that can be expressed as a concrete in-game operation, also emit a structured command. Commands must be declarative data, never code, shell commands, macros, coordinates, or key sequences.",
             "Each command must state exact visible target, preconditions, ordered player-performed steps, a way to verify the result, rationale, risk, and confidence. If target or prerequisites are not visible, emit inspect_screen instead of guessing.",
             "Do not include commands to spend gems, buy bundles, use rare items, or make irreversible account changes. For those, explain the decision in advice only and mark that human judgment is required.",
-            "Commands are for the human player to perform. The governor does not click, type, tap, or otherwise execute them.",
+            "For low-risk routine actions only, provide input_actions as explicit click targets in normalized screenshot coordinates 0..1000 (0,0 top-left). Use 1-3 clicks maximum, and only when the exact target is clearly visible. Every click must have a purpose. For anything uncertain or involving resource costs, omit input_actions. Never emit keyboard actions, text entry, arbitrary coordinates unrelated to a visible control, purchases, gems, rare items, upgrades, training, or irreversible actions. The local governor independently enforces an allow-list and confidence threshold before any click. A click is not proof of success; require a fresh screenshot to assess the outcome.",
             "For each supplied pending task, return one task_review only when the current screenshot provides relevant evidence; otherwise use uncertain with an explanation.",
             "Use likely_completed only when the visible screen strongly supports that the specific task's intended result occurred. Disappearance of an icon alone may be ambiguous.",
             "Never treat a task as completed merely because it is old or not visible on this screen. Use still_pending only when the screenshot visibly shows the task remains undone.",
