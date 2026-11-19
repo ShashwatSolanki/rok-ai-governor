@@ -8,6 +8,7 @@ A read-only companion for analysing Rise of Kingdoms screenshots and turning vis
 
 Current capabilities:
 - Capture a screenshot of the primary desktop monitor.
+- On Windows, list application windows and attempt window-only capture using the Windows PrintWindow API.
 - Analyse a supplied screenshot with EasyOCR.
 - Save OCR observations as JSON for later processing.
 - Keep capture and analysis separate so screenshots can be reviewed before any recommendations are made.
@@ -16,7 +17,7 @@ Current capabilities:
 
 - Windows 10/11
 - Python 3.10+
-- BlueStacks 5 or the official PC client (screenshots are supplied by the user; no emulator-specific bridge is required)
+- BlueStacks 5 or the official PC client
 
 ## Setup (PowerShell)
 
@@ -30,7 +31,25 @@ pip install -e .
 
 ## Usage
 
-Capture the primary monitor:
+List visible application windows and their titles:
+
+```powershell
+python -m rok_governor windows
+```
+
+Try to capture the BlueStacks window without capturing the rest of the desktop:
+
+```powershell
+python -m rok_governor capture-window
+```
+
+If the window title differs, pass a distinctive part of its title:
+
+```powershell
+python -m rok_governor capture-window --title "BlueStacks"
+```
+
+Capture the primary monitor instead:
 
 ```powershell
 python -m rok_governor capture
@@ -42,6 +61,10 @@ Analyse an existing screenshot:
 python -m rok_governor analyze screenshots\city.png
 ```
 
+### Background/minimised capture limitations
+
+Window capture uses Windows `PrintWindow` with `PW_RENDERFULLCONTENT`. This asks Windows/the application to render the selected window into an off-screen bitmap, so it can work while other windows are in front. It is not guaranteed to work when BlueStacks is minimised: some GPU-accelerated game surfaces return a black or stale frame. The capture command rejects obvious blank frames rather than treating them as valid game screenshots. If that happens, restore BlueStacks and leave it behind your other apps while testing; do not assume minimised capture works until you have checked the resulting PNG.
+
 The first OCR run may download EasyOCR model weights. OCR output is an approximation: verify all resource counts and timers visually before relying on them.
 
 ## Project layout
@@ -51,6 +74,7 @@ src/rok_governor/
   __init__.py
   __main__.py
   capture.py
+  window_capture.py
   ocr.py
   cli.py
 screenshots/       # local captures (git-ignored)
