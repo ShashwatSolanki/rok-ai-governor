@@ -115,6 +115,12 @@ Inspect the latest runtime heartbeat from another terminal:
 python -m rok_governor health
 ```
 
+Inspect recent background input attempts:
+
+```powershell
+python -m rok_governor automation-log
+```
+
 The health command reads `data/runtime_status.json` and reports heartbeat freshness, the last successful capture, OCR and Gemini operations, pending/completed recommendation counts, current monitor state, and the latest error. A heartbeat older than three minutes is flagged as possibly stale. It is a local diagnostic snapshot; if the process is killed abruptly, its state may remain at the last recorded heartbeat rather than changing to `stopped`.
 
 ### Structured command queue
