@@ -138,6 +138,10 @@ def build_parser() -> argparse.ArgumentParser:
         "status", help="Show the latest known account fields from the local history database."
     )
     status_parser.add_argument("--database", default="data/account_history.sqlite3")
+    health_parser = subparsers.add_parser(
+        "health", help="Show the governor runtime heartbeat and last successful operations."
+    )
+    health_parser.add_argument("--database", default="data/account_history.sqlite3")
     tasks_parser = subparsers.add_parser("tasks", help="List persistent Gemini recommendations.")
     tasks_parser.add_argument("--database", default="data/account_history.sqlite3")
     tasks_parser.add_argument("--status", choices=("pending", "completed", "dismissed", "all"), default="pending")
@@ -274,6 +278,25 @@ def main() -> int:
             print(f"Task #{args.task_id} was not found.")
             return 1
         print(f"Task #{args.task_id} marked {args.status}.")
+        return 0
+
+    if args.command == "health":
+        health_path = Path(args.database).with_name("runtime_status.json")
+        if not health_path.is_file():
+            print("No runtime health record yet. Start the governor with 'python -m rok_governor run'.")
+            return 0
+        health = json.loads(health_path.read_text(encoding="utf-8"))
+        print(f"State: {health.get('state', 'unknown')}")
+        print(f"Mode: {health.get('mode', 'unknown')}")
+        print(f"Game window: {health.get('window_title', 'unknown')}")
+        print(f"Last heartbeat: {health.get('updated_at') or 'never'}")
+        print(f"Last capture: {health.get('last_capture_at') or 'never'}")
+        print(f"Last OCR success: {health.get('last_ocr_at') or 'never'}")
+        print(f"Last Gemini success: {health.get('last_gemini_at') or 'never'}")
+        print(f"Observations this session: {health.get('observations_this_session', 0)}")
+        print(f"Consecutive failures: {health.get('consecutive_failures', 0)}")
+        if health.get("last_error"):
+            print(f"Last error: {health['last_error']}")
         return 0
 
     if args.command == "status":
