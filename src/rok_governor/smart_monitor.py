@@ -50,11 +50,11 @@ def run_smart_monitor(
     gemini_interval: float = 180.0,
     gemini_model: str | None = None,
 ) -> int:
-    """Watch a window continuously, invoking OCR selectively.
+    """Watch a window continuously, invoking OCR selectively and Gemini on schedule.
 
-    A changed frame is retained as a diagnostic screenshot. Unchanged samples
-    are deleted immediately. OCR also runs on a heartbeat so small HUD updates
-    are eventually picked up even if frame comparison considers them noise.
+    Diagnostic screenshots are retained only when an observation is saved.
+    Gemini failures use their own exponential retry schedule and do not stop
+    local observation capture.
     """
     if sample_interval < 0.25:
         raise ValueError("--sample-interval must be at least 0.25 seconds.")
@@ -64,6 +64,8 @@ def run_smart_monitor(
         raise ValueError("--stable-frames must be at least 1.")
     if heartbeat < sample_interval:
         raise ValueError("--heartbeat must be >= --sample-interval.")
+    if gemini_interval <= 0:
+        raise ValueError("--gemini-interval must be positive.")
 
     store = AccountStore(database)
     started = time.monotonic()
@@ -91,7 +93,6 @@ def run_smart_monitor(
             keep_screenshot = False
             try:
                 signature = _frame_signature(screenshot)
-
                 ratio = (
                     _change_ratio(previous_signature, signature)
                     if previous_signature is not None else 1.0
@@ -104,8 +105,6 @@ def run_smart_monitor(
                     changed_streak = 0
 
                 now = time.monotonic()
-                # Debounce animated UI effects so a pulsing icon or moving background
-                # cannot force OCR on every pair of samples.
                 changed = (
                     changed_streak >= stable_frames
                     and (last_ocr == 0.0 or now - last_ocr >= 10.0)
@@ -113,70 +112,70 @@ def run_smart_monitor(
                 heartbeat_due = last_ocr == 0.0 or now - last_ocr >= heartbeat
                 should_analyse = changed or heartbeat_due
 
-                    if should_analyse:
-                        observation = analyse_image(screenshot, profile=profile)
-                        observation["source"] = str(screenshot)
-                        observation["monitor"] = {
-                            "mode": "smart",
-                            "change_ratio": round(ratio, 5),
-                            "trigger": "visual_change" if changed else "heartbeat",
-                        }
-                        observation_id = store.record(observation)
-                        output = save_observation(observation, output_dir)
-                        observation_number += 1
-                        keep_screenshot = True
-                        print(
-                            f"Observation #{observation_id}: "
-                            f"screen={observation.get('screen', {}).get('type', 'unknown')} "
-                            f"trigger={observation['monitor']['trigger']} "
-                            f"change={ratio:.1%} review={observation.get('review_required')} "
-                            f"json={output}",
-                            flush=True,
-                        )
-                        last_ocr = time.monotonic()
-                        changed_streak = 0
+                if should_analyse:
+                    observation = analyse_image(screenshot, profile=profile)
+                    observation["source"] = str(screenshot)
+                    observation["monitor"] = {
+                        "mode": "smart",
+                        "change_ratio": round(ratio, 5),
+                        "trigger": "visual_change" if changed else "heartbeat",
+                    }
+                    observation_id = store.record(observation)
+                    output = save_observation(observation, output_dir)
+                    observation_number += 1
+                    keep_screenshot = True
+                    print(
+                        f"Observation #{observation_id}: "
+                        f"screen={observation.get('screen', {}).get('type', 'unknown')} "
+                        f"trigger={observation['monitor']['trigger']} "
+                        f"change={ratio:.1%} review={observation.get('review_required')} "
+                        f"json={output}",
+                        flush=True,
+                    )
+                    last_ocr = time.monotonic()
+                    changed_streak = 0
 
-                        if gemini_enabled and time.monotonic() >= next_gemini_at:
-                            try:
-                                from .gemini_advisor import advise_with_gemini, save_advice
+                    if gemini_enabled and time.monotonic() >= next_gemini_at:
+                        try:
+                            from .gemini_advisor import advise_with_gemini, save_advice
 
-                                print("Requesting Gemini strategy assessment...", flush=True)
-                                advice = advise_with_gemini(
-                                    screenshot,
-                                    profile=profile,
-                                    database=database,
-                                    ocr_observation=observation,
-                                    model=gemini_model,
-                                )
-                                advice_path = save_advice(advice)
-                                from .task_store import TaskStore
+                            print("Requesting Gemini strategy assessment...", flush=True)
+                            advice = advise_with_gemini(
+                                screenshot,
+                                profile=profile,
+                                database=database,
+                                ocr_observation=observation,
+                                model=gemini_model,
+                            )
+                            advice_path = save_advice(advice)
+                            from .task_store import TaskStore
 
-                                task_store = TaskStore(database)
-                                synced = task_store.ingest(advice)
-                                reviews_saved = task_store.record_reviews(advice)
-                                print(
-                                    f"Gemini recommendations saved: {advice_path}; "
-                                    f"task queue synced ({synced} recommendation(s)); "
-                                    f"visual reviews saved ({reviews_saved}).",
-                                    flush=True,
-                                )
-                                gemini_failures = 0
-                                next_gemini_at = time.monotonic() + gemini_interval
-                            except Exception as exc:
-                                gemini_failures += 1
-                                delay = min(
-                                    gemini_max_retry_delay,
-                                    gemini_retry_delay * (2 ** min(gemini_failures - 1, 6)),
-                                )
-                                next_gemini_at = time.monotonic() + delay
-                                print(
-                                    f"Gemini advisor unavailable ({type(exc).__name__}: {exc}); "
-                                    f"retrying in {delay:g}s (failures: {gemini_failures}).",
-                                    flush=True,
-                                )
-                finally:
-                    if not keep_screenshot:
-                        screenshot.unlink(missing_ok=True)
+                            task_store = TaskStore(database)
+                            synced = task_store.ingest(advice)
+                            reviews_saved = task_store.record_reviews(advice)
+                            print(
+                                f"Gemini recommendations saved: {advice_path}; "
+                                f"task queue synced ({synced} recommendation(s)); "
+                                f"visual reviews saved ({reviews_saved}).",
+                                flush=True,
+                            )
+                            gemini_failures = 0
+                            next_gemini_at = time.monotonic() + gemini_interval
+                        except Exception as exc:
+                            gemini_failures += 1
+                            delay = min(
+                                gemini_max_retry_delay,
+                                gemini_retry_delay * (2 ** min(gemini_failures - 1, 6)),
+                            )
+                            next_gemini_at = time.monotonic() + delay
+                            print(
+                                f"Gemini advisor unavailable ({type(exc).__name__}: {exc}); "
+                                f"retrying in {delay:g}s (failures: {gemini_failures}).",
+                                flush=True,
+                            )
+            finally:
+                if not keep_screenshot:
+                    screenshot.unlink(missing_ok=True)
 
             if duration and time.monotonic() - started >= duration:
                 break
@@ -192,8 +191,6 @@ def run_smart_monitor(
         flush=True,
     )
     return observation_number
-
-
 
 def run_resilient_monitor(
     *,
