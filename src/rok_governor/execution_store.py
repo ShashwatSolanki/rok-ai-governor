@@ -34,6 +34,30 @@ class ExecutionStore:
                     updated_at TEXT NOT NULL
                 )"""
             )
+            previous_review = db.execute(
+                """SELECT id, status, details_json, finished_at FROM automation_executions
+                   WHERE status IN ('failed', 'uncertain')
+                   ORDER BY id DESC LIMIT 1"""
+            ).fetchone()
+            if previous_review is None:
+                initial_pause = 0
+                initial_reason = ""
+                initial_updated_at = datetime.now(timezone.utc).isoformat()
+            else:
+                previous_details = json.loads(previous_review[2])
+                evidence = (previous_details.get("visual_review") or {}).get("evidence")
+                initial_pause = 1
+                initial_reason = (
+                    f"Execution #{previous_review[0]} "
+                    f"({previous_details.get('verification_criteria', 'action')}) was visually "
+                    f"assessed as {previous_review[1]}: {evidence or 'no visual evidence supplied'}"
+                )
+                initial_updated_at = previous_review[3] or datetime.now(timezone.utc).isoformat()
+            db.execute(
+                """INSERT OR IGNORE INTO automation_control (id, paused, reason, updated_at)
+                   VALUES (1, ?, ?, ?)""",
+                (initial_pause, initial_reason, initial_updated_at),
+            )
 
     @staticmethod
     def fingerprint(command: dict[str, Any]) -> str:
