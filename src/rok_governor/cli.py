@@ -46,6 +46,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--output-dir", default="observations", help="Directory for JSON results."
     )
     analyse_parser.add_argument(
+        "--profile", choices=("bluestacks", "pc"), default="bluestacks",
+        help="OCR layout profile (default: bluestacks). Use pc for the official PC client.",
+    )
+    analyse_parser.add_argument(
         "--gemini", action="store_true",
         help="Also send the screenshot to Gemini for visual interpretation (uses API quota).",
     )
@@ -90,7 +94,7 @@ def main() -> int:
 
         print("[2/3] Running local EasyOCR (first run can take a while)...", flush=True)
         started = time.perf_counter()
-        observation = analyse_image(args.image)
+        observation = analyse_image(args.image, profile=args.profile)
         print(f"      OCR finished in {time.perf_counter() - started:.1f}s.", flush=True)
 
         gemini_failed = False
