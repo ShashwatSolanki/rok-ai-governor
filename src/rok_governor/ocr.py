@@ -204,7 +204,7 @@ def analyse_image(image_path: str | Path, profile: str = "bluestacks") -> dict[s
 
     commander: dict[str, Any] | None = None
     if is_commander_screen:
-        level_match = re.search(r"\\b(?:level\\s*)?(\\d{1,2})\\s*/\\s*(\\d{1,2})\\b", commander_text, re.IGNORECASE)
+        level_match = re.search(r"\b(?:level\\s*)?(\\d{1,2})\\s*/\\s*(\\d{1,2})\\b", commander_text, re.IGNORECASE)
         capacity_match = re.search(r"unit\\s+capacity\\s*[: ]*([\\d,]+)", commander_text, re.IGNORECASE)
         role_labels = (
             "Infantry", "Cavalry", "Archer", "Leadership", "Garrison",
@@ -213,7 +213,7 @@ def analyse_image(image_path: str | Path, profile: str = "bluestacks") -> dict[s
         )
         found_roles = [
             role for role in role_labels
-            if re.search(rf"\\b{re.escape(role)}\\b", commander_text, re.IGNORECASE)
+            if re.search(rf"\b{re.escape(role)}\\b", commander_text, re.IGNORECASE)
         ]
         commander = {
             "selected_commander_text": commander_text,
