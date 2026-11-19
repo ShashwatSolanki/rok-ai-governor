@@ -209,6 +209,10 @@ def run_smart_monitor(
                     try:
                         from .gemini_advisor import advise_with_gemini, save_advice
 
+                        from .execution_store import ExecutionStore
+                        pending_verification_before_cycle = bool(
+                            ExecutionStore(database).pending_verification()
+                        )
                         print("Requesting Gemini strategy assessment...", flush=True)
                         advice = advise_with_gemini(
                             screenshot,
@@ -236,7 +240,12 @@ def run_smart_monitor(
                         execution_reviews_saved = execution_store.record_reviews(advice)
                         candidate_commands = (
                             (advice.get("advice") or {}).get("commands") or []
-                        ) if automation_enabled else []
+                        ) if automation_enabled and not pending_verification_before_cycle else []
+                        if automation_enabled and pending_verification_before_cycle:
+                            print(
+                                "No new input this cycle: Gemini is assessing the previous click first.",
+                                flush=True,
+                            )
                         for proposed in candidate_commands:
                             if not proposed.get("input_actions"):
                                 continue
