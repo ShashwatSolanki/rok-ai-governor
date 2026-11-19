@@ -37,7 +37,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     subparsers.add_parser(
-        "windows", help="List visible top-level Windows application windows."
+        "windows", help="List visible top-level windows and child HWNDs."
     )
 
     analyse_parser = subparsers.add_parser(
@@ -194,7 +194,7 @@ def main() -> int:
         return 0
 
     if args.command == "windows":
-        from .window_capture import find_windows
+        from .window_capture import find_windows, find_child_windows
 
         windows = find_windows()
         if not windows:
@@ -203,6 +203,19 @@ def main() -> int:
         for item in windows:
             state = "minimised" if item["minimized"] else "not minimised"
             print(f'{item["title"]} | {state} | hwnd={item["hwnd"]}')
+            if "万国覚醒" in item["title"]:
+                children = find_child_windows(item["hwnd"])
+                if not children:
+                    print("  (no child windows)")
+                for child in children:
+                    visibility = "visible" if child["visible"] else "hidden"
+                    child_title = child["title"] or "(untitled)"
+                    print(
+                        f'  child hwnd={child["hwnd"]} | class={child["class_name"]!r} '
+                        f'| title={child_title!r} | {visibility} '
+                        f'| size={child["size"]} | client={child["client_rect"]} '
+                        f'| pid={child["process_id"]}'
+                    )
         return 0
 
     if args.command == "capture-window":
