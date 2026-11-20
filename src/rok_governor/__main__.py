@@ -26,7 +26,7 @@ def _run_uia_diagnostic(argv: list[str]) -> int:
         print(f"UI Automation diagnostic unavailable: {exc}")
         return 1
     print(json.dumps(result, indent=2, ensure_ascii=False))
-    print("\\nNo focus change, pointer movement, or game input was performed.")
+    print("No focus change, pointer movement, or game input was performed.")
     return 0
 
 
