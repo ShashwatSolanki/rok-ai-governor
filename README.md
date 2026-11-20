@@ -200,3 +200,17 @@ observations/      # local JSON output (git-ignored)
 4. Expand account context and user-configurable farm objectives.
 
 Only allow-listed, low-risk background click actions are automated; broader gameplay actions are deliberately excluded.
+
+
+### Native Windows UI Automation diagnostic
+
+Before choosing another native input mechanism, inspect whether the official Windows client exposes accessible controls through Microsoft's UI Automation tree. This command is read-only: it does not focus the game, move the pointer, or send input.
+
+Install the updated dependencies, then run:
+
+```powershell
+python -m pip install -r requirements.txt
+python -m rok_governor uia-diagnose --title "万国覚醒"
+```
+
+The report lists accessible element names, control types, automation IDs, bounds, and visibility. A sparse tree is expected for some Unity canvas-rendered clients; if the game exposes only its top-level window, UI Automation is not a useful click route and we should investigate a different native mechanism rather than fabricate controls from the screenshot.
