@@ -17,7 +17,7 @@ from .sqlite_utils import connect_database
 ALLOWED_ACTION_TYPES = {
     "inspect_screen", "open_menu", "select_tab", "start_gathering",
     "start_research", "upgrade_building", "train_troops",
-    "claim_reward", "manage_commander", "other",
+    "claim_reward", "manage_commander", "open_academy", "other",
 }
 ALLOWED_STATUSES = {"proposed", "completed", "dismissed"}
 
