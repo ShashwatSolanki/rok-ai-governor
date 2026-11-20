@@ -15,11 +15,14 @@ class UIADiagnosticError(RuntimeError):
 def inspect_uia_tree(
     title_filter: str = "万国覚醒",
     *,
+    hwnd: int | None = None,
     max_elements: int = 500,
     max_depth: int = 8,
 ) -> dict[str, Any]:
     """Return a bounded snapshot of UIA elements for one uniquely matched window."""
-    if not isinstance(title_filter, str) or not title_filter.strip():
+    if hwnd is not None and (type(hwnd) is not int or hwnd <= 0):
+        raise UIADiagnosticError("hwnd must be a positive integer when provided.")
+    if hwnd is None and (not isinstance(title_filter, str) or not title_filter.strip()):
         raise UIADiagnosticError("A non-empty window title filter is required.")
     if type(max_elements) is not int or not 1 <= max_elements <= 2000:
         raise UIADiagnosticError("max_elements must be an integer between 1 and 2000.")
@@ -38,10 +41,14 @@ def inspect_uia_tree(
         # Match through Win32 first: UIA's window_text() can lose non-Latin
         # characters (for example, returning "????" for a Japanese title).
         win32_desktop = Desktop(backend="win32")
-        candidates = [
-            window for window in win32_desktop.windows()
-            if title_filter.casefold() in (window.window_text() or "").casefold()
-        ]
+        if hwnd is not None:
+            native_window = win32_desktop.window(handle=hwnd).wrapper_object()
+            candidates = [native_window]
+        else:
+            candidates = [
+                window for window in win32_desktop.windows()
+                if title_filter.casefold() in (window.window_text() or "").casefold()
+            ]
     except Exception as exc:
         raise UIADiagnosticError(
             f"Windows could not enumerate native windows: {type(exc).__name__}: {exc}"
@@ -54,6 +61,10 @@ def inspect_uia_tree(
 
     native_window = candidates[0]
     native_handle = int(native_window.handle)
+    if hwnd is not None and native_handle != hwnd:
+        raise UIADiagnosticError(
+            f"Win32 resolved HWND {native_handle}; expected requested HWND {hwnd}."
+        )
     native_title = native_window.window_text() or ""
 
     try:
@@ -126,6 +137,7 @@ def inspect_uia_tree(
 
     return {
         "window_title": native_title,
+        "requested_hwnd": hwnd,
         "uia_name": root_name,
         "window_class": root_class,
         "hwnd": native_handle,
