@@ -101,6 +101,15 @@ def post_click(
     if not win32gui.IsWindow(hwnd) or not win32gui.IsWindowVisible(hwnd):
         raise WindowInputError("Target game window is no longer available.")
 
+    window_class = target.get("class_name") or win32gui.GetClassName(hwnd)
+    if input_mode == "background" and window_class == "UnityWndClass":
+        raise WindowInputError(
+            "Background click withheld: this native Unity window uses a Raw Input "
+            "path that ordinary posted WM_MOUSE messages do not synthesize. "
+            "Keep this client in --observe-only; foreground input would take over "
+            "the desktop and is not suitable for multitasking."
+        )
+
     left, top, right, bottom = target["rect"]
     window_width, window_height = right - left, bottom - top
     if screenshot_size is None:
@@ -208,6 +217,7 @@ def post_click(
 
     return {
         "window_title": target["title"],
+        "window_class": window_class,
         "hwnd": hwnd,
         "x_normalized": x_normalized,
         "y_normalized": y_normalized,
