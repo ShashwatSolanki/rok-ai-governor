@@ -18,7 +18,6 @@ from .ocr import analyse_image, save_observation
 from .window_capture import (
     capture_window,
     capture_window_image,
-    focus_window,
     save_window_image,
 )
 
@@ -156,8 +155,9 @@ def run_smart_monitor(
 
     _write_runtime_status(database, state="starting", title=title, started_at=session_started_at, automation_enabled=automation_enabled and gemini_enabled, input_mode=input_mode)
     try:
-        if input_mode == "foreground":
-            focus_window(title)
+        # Never steal focus at monitor startup. Foreground mode focuses the
+        # game only inside post_click, immediately before an explicitly
+        # authorized action; observe-only runs remain genuinely read-only.
         while True:
             loop_started = time.monotonic()
             frame = capture_window_image(title)
