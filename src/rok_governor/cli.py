@@ -254,7 +254,7 @@ def main() -> int:
             print(f"Input diagnostic unavailable: {exc}")
             return 1
         print(json.dumps(geometry, indent=2, ensure_ascii=False))
-        print("\\nNo pointer movement, focus change, or game input was performed.")
+        print("\nNo pointer movement, focus change, or game input was performed.")
         return 0
 
     if args.command == "capture-window":
