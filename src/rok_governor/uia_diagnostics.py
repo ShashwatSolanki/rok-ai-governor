@@ -35,22 +35,38 @@ def inspect_uia_tree(
         ) from exc
 
     try:
-        desktop = Desktop(backend="uia")
+        # Match through Win32 first: UIA's window_text() can lose non-Latin
+        # characters (for example, returning "????" for a Japanese title).
+        win32_desktop = Desktop(backend="win32")
         candidates = [
-            window for window in desktop.windows()
+            window for window in win32_desktop.windows()
             if title_filter.casefold() in (window.window_text() or "").casefold()
         ]
     except Exception as exc:
         raise UIADiagnosticError(
-            f"Windows UI Automation could not enumerate desktop windows: {type(exc).__name__}: {exc}"
+            f"Windows could not enumerate native windows: {type(exc).__name__}: {exc}"
         ) from exc
 
     if len(candidates) != 1:
         raise UIADiagnosticError(
-            f"Expected exactly one UIA window matching {title_filter!r}; found {len(candidates)}."
+            f"Expected exactly one native window matching {title_filter!r}; found {len(candidates)}."
         )
 
-    root = candidates[0]
+    native_window = candidates[0]
+    native_handle = int(native_window.handle)
+    native_title = native_window.window_text() or ""
+
+    try:
+        # Reacquire the same HWND through UIA instead of matching its possibly
+        # corrupted UIA name. This preserves identity without relying on title
+        # encoding in the UIA provider.
+        uia_desktop = Desktop(backend="uia")
+        root = uia_desktop.window(handle=native_handle).wrapper_object()
+    except Exception as exc:
+        raise UIADiagnosticError(
+            f"UI Automation could not attach to native window HWND {native_handle}: "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
     elements: list[dict[str, Any]] = []
     truncated = False
 
@@ -101,10 +117,16 @@ def inspect_uia_tree(
         root_name = root.window_text()
         root_class = root_info.class_name or ""
     except Exception:
-        root_handle, root_name, root_class = 0, "", ""
+        root_handle, root_name, root_class = native_handle, "", ""
+
+    if root_handle and root_handle != native_handle:
+        raise UIADiagnosticError(
+            f"UI Automation attached to unexpected HWND {root_handle}; expected {native_handle}."
+        )
 
     return {
-        "window_title": root_name,
+        "window_title": native_title,
+        "uia_name": root_name,
         "window_class": root_class,
         "hwnd": root_handle,
         "backend": "uia",
