@@ -89,6 +89,14 @@ def inspect_uia_tree(
         try:
             info = wrapper.element_info
             rect = info.rectangle
+            # is_offscreen is not exposed by every pywinauto UIAElementInfo
+            # version/provider. Treat it as optional instead of failing the
+            # entire element record when the attribute is unavailable.
+            try:
+                offscreen_value = getattr(info, "is_offscreen", None)
+                offscreen = None if offscreen_value is None else bool(offscreen_value)
+            except Exception:
+                offscreen = None
             elements.append({
                 "depth": depth,
                 "name": (info.name or "")[:240],
@@ -98,7 +106,7 @@ def inspect_uia_tree(
                 "handle": int(info.handle or 0),
                 "rectangle": [rect.left, rect.top, rect.right, rect.bottom],
                 "enabled": bool(info.enabled),
-                "offscreen": bool(info.is_offscreen),
+                "offscreen": offscreen,
             })
         except Exception as exc:
             elements.append({
