@@ -75,7 +75,16 @@ class AccountStore:
                        ON CONFLICT(state_key) DO UPDATE SET
                          value_json=excluded.value_json,
                          observed_at=excluded.observed_at,
-                         confidence=excluded.confidence""",
+                         confidence=excluded.confidence
+                       WHERE
+                         (account_state.confidence IS NULL AND excluded.confidence IS NULL)
+                         OR (
+                           excluded.confidence IS NOT NULL
+                           AND (
+                             account_state.confidence IS NULL
+                             OR excluded.confidence >= account_state.confidence
+                           )
+                         )""",
                     (key, json.dumps(value, ensure_ascii=False), observed_at, confidence),
                 )
             return int(cursor.lastrowid)
