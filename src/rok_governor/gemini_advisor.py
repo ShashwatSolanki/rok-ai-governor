@@ -132,6 +132,18 @@ def advise_with_gemini(
     ]
     from .execution_store import ExecutionStore
     pending_execution_reviews = ExecutionStore(database).pending_verification()
+    from .command_store import CommandStore
+    pending_commands = CommandStore(database).list("proposed")
+    pending_command_context = [
+        {
+            "action_type": command["action_type"],
+            "title": command["title"],
+            "target": command["target"],
+            "seen_count": command["seen_count"],
+            "last_seen": command["last_seen"],
+        }
+        for command in pending_commands[:30]
+    ]
     context = {
         "screenshot_geometry": {
             "width_pixels": screenshot_width,
@@ -146,6 +158,7 @@ def advise_with_gemini(
             {"task_id": task["id"], "category": task["category"], "action": task["action"]}
             for task in pending_tasks
         ],
+        "existing_pending_commands": pending_command_context,
         "recent_task_history": [
             {"task_id": task["id"], "status": task["status"], "category": task["category"],
              "action": task["action"], "last_seen": task["last_seen"]}
@@ -161,7 +174,8 @@ def advise_with_gemini(
             "Prioritize practical farm-account progression and resource gathering based on evidence visible in the screenshot.",
             "Explain uncertainty and cite the visual evidence for every action.",
             "Return a small prioritized queue, not generic filler. It is acceptable to return no actions.",
-            "Before recommending an action, compare it with existing_pending_actions and recent_task_history. Do not create a differently worded duplicate of an already-pending goal. Do not repeat completed or dismissed goals unless current screenshot evidence shows a genuinely new instance or changed need; explain why it is new.",
+            "Before proposing any command, compare its intent and target with existing_pending_commands as well as existing_pending_actions and recent_task_history. Treat differently worded actions that accomplish the same goal as duplicates. If an equivalent command is already proposed, do not emit it again; the existing proposal remains pending. Do not repeat navigation commands (such as opening the Academy or switching to Map View) unless the current screen visibly shows that navigation is still needed and the previous proposal is no longer applicable.",
+            "Return at most 3 commands, ordered by priority and immediate usefulness. Prefer one next step over a long chain of speculative navigation. It is valid to return zero commands when existing proposals already cover the visible needs.",
             "New recommendations and commands are proposals only; do not claim they have been executed. Assess previously posted actions separately through execution_reviews using only current visible evidence.",
             "For each recommended action that can be expressed as a concrete in-game operation, also emit a structured command. Commands must be declarative data, never code, shell commands, macros, or key sequences.",
             "Each command must state exact visible target, preconditions, ordered steps, a way to verify the result, rationale, risk, and confidence. If target or prerequisites are not visible, emit inspect_screen instead of guessing.",
