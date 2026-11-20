@@ -202,6 +202,18 @@ observations/      # local JSON output (git-ignored)
 Only allow-listed, low-risk background click actions are automated; broader gameplay actions are deliberately excluded.
 
 
+### Native Windows process/input-path diagnostic
+
+Inspect the official PC client's process metadata and names of modules already loaded in that process:
+
+```powershell
+python -m rok_governor native-process-diagnose --hwnd 921252
+```
+
+Use the current game HWND from `python -m rok_governor windows` if it changes. This read-only diagnostic reports the executable path and PE architecture, process architecture, window/client geometry and styles, plus loaded module paths and a filtered list of input/rendering-related module names. It does not read process memory, write to the process, inject code, alter focus, or send input. Windows may deny module enumeration if the diagnostic and game run at different integrity levels; the report will explain access failures rather than attempting privilege escalation.
+
+Loaded module names are clues, not proof of the input API actually used at runtime. In particular, seeing `user32.dll`, `winmm.dll`, or an input-related module does not establish that the game accepts background window messages. We will use the output to choose a safe next diagnostic, not to hook or modify the game.
+
 ### Native Windows UI Automation diagnostic
 
 Before choosing another native input mechanism, inspect whether the official Windows client exposes accessible controls through Microsoft's UI Automation tree. This command is read-only: it does not focus the game, move the pointer, or send input.
