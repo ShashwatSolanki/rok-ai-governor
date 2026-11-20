@@ -55,15 +55,18 @@ $systemDisk = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='C:'"
     if not executable:
         raise RuntimeError("Windows PowerShell was not found; no host changes were made.")
 
-    completed = subprocess.run(
-        [executable, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", powershell],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=20,
-        check=False,
-    )
+    try:
+        completed = subprocess.run(
+            [executable, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", powershell],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=20,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("Windows host query timed out after 20 seconds.") from exc
     if completed.returncode != 0:
         detail = (completed.stderr or completed.stdout).strip()
         raise RuntimeError(f"PowerShell host query failed: {detail or completed.returncode}")
