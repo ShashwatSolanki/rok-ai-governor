@@ -56,7 +56,6 @@ def _pe_machine(path: str) -> str:
 def _enumerate_modules(process: wintypes.HANDLE) -> dict[str, Any]:
     """List module paths using PSAPI; gracefully report access restrictions."""
     psapi = ctypes.WinDLL("psapi", use_last_error=True)
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
     enum_modules = psapi.EnumProcessModulesEx
     enum_modules.argtypes = [
         wintypes.HANDLE,
@@ -133,10 +132,10 @@ def inspect_native_process(hwnd: int) -> dict[str, Any]:
     user32.GetWindowRect.restype = wintypes.BOOL
     user32.GetClientRect.argtypes = [wintypes.HWND, ctypes.c_void_p]
     user32.GetClientRect.restype = wintypes.BOOL
-    kernel32.GetWindowThreadProcessId.argtypes = [
+    user32.GetWindowThreadProcessId.argtypes = [
         wintypes.HWND, ctypes.POINTER(wintypes.DWORD)
     ]
-    kernel32.GetWindowThreadProcessId.restype = wintypes.DWORD
+    user32.GetWindowThreadProcessId.restype = wintypes.DWORD
     kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
     kernel32.OpenProcess.restype = wintypes.HANDLE
     kernel32.QueryFullProcessImageNameW.argtypes = [
@@ -172,7 +171,7 @@ def inspect_native_process(hwnd: int) -> dict[str, Any]:
         raise NativeProcessDiagnosticError("Could not read the game client rectangle.")
 
     process_id = wintypes.DWORD()
-    thread_id = kernel32.GetWindowThreadProcessId(hwnd, ctypes.byref(process_id))
+    thread_id = user32.GetWindowThreadProcessId(hwnd, ctypes.byref(process_id))
     if not process_id.value:
         raise NativeProcessDiagnosticError("Could not resolve the window's process ID.")
 
