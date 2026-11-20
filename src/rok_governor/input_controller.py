@@ -279,3 +279,79 @@ def execute_safe_actions(
     )
     result["purpose"] = purpose.strip()
     return [result]
+
+
+def diagnose_input_geometry(
+    title_filter: str = "万国覚醒",
+    *,
+    x_normalized: int = 500,
+    y_normalized: int = 500,
+    screenshot_size: tuple[int, int] | None = None,
+) -> dict[str, Any]:
+    """Inspect input geometry without focusing a window or sending any input."""
+    if type(x_normalized) is not int or type(y_normalized) is not int:
+        raise WindowInputError("Diagnostic coordinates must be integers.")
+    if not 0 <= x_normalized <= 1000 or not 0 <= y_normalized <= 1000:
+        raise WindowInputError("Diagnostic coordinates must be within 0..1000.")
+    if screenshot_size is not None and (
+        not isinstance(screenshot_size, tuple)
+        or len(screenshot_size) != 2
+        or any(type(value) is not int or value <= 0 for value in screenshot_size)
+    ):
+        raise WindowInputError(f"Invalid screenshot geometry: {screenshot_size!r}")
+
+    try:
+        import win32api
+        import win32gui
+        from .window_capture import find_child_windows, find_windows
+    except ImportError as exc:  # pragma: no cover - Windows-only runtime
+        raise WindowInputError("Input diagnostics require pywin32 on Windows.") from exc
+
+    candidates = find_windows(title_filter)
+    if len(candidates) != 1:
+        raise WindowInputError(
+            f"Expected exactly one matching game window; found {len(candidates)}. "
+            "Use a more specific --title."
+        )
+    target = candidates[0]
+    hwnd = target["hwnd"]
+    left, top, right, bottom = target["rect"]
+    window_width, window_height = right - left, bottom - top
+    screenshot_width, screenshot_height = screenshot_size or (window_width, window_height)
+    screenshot_x = min(screenshot_width - 1, round(x_normalized * screenshot_width / 1000))
+    screenshot_y = min(screenshot_height - 1, round(y_normalized * screenshot_height / 1000))
+    window_x = round(screenshot_x * window_width / screenshot_width)
+    window_y = round(screenshot_y * window_height / screenshot_height)
+    screen_x, screen_y = left + window_x, top + window_y
+    client_x, client_y = win32gui.ScreenToClient(hwnd, (screen_x, screen_y))
+    client_rect = win32gui.GetClientRect(hwnd)
+    virtual = {
+        "left": win32api.GetSystemMetrics(76),
+        "top": win32api.GetSystemMetrics(77),
+        "width": win32api.GetSystemMetrics(78),
+        "height": win32api.GetSystemMetrics(79),
+    }
+    return {
+        "window_title": target["title"],
+        "hwnd": hwnd,
+        "minimized": target["minimized"],
+        "window_rect": list(target["rect"]),
+        "window_size": [window_width, window_height],
+        "client_rect": list(client_rect),
+        "client_size": [client_rect[2] - client_rect[0], client_rect[3] - client_rect[1]],
+        "screenshot_size": [screenshot_width, screenshot_height],
+        "normalized_target": [x_normalized, y_normalized],
+        "screenshot_pixel": [screenshot_x, screenshot_y],
+        "screen_target": [screen_x, screen_y],
+        "client_target": [client_x, client_y],
+        "target_inside_client": (
+            0 <= client_x < client_rect[2] - client_rect[0]
+            and 0 <= client_y < client_rect[3] - client_rect[1]
+        ),
+        "virtual_desktop": virtual,
+        "cursor_position": list(win32api.GetCursorPos()),
+        "foreground_hwnd": win32gui.GetForegroundWindow(),
+        "child_windows": find_child_windows(hwnd),
+        "input_sent": False,
+        "focus_changed": False,
+    }
