@@ -91,6 +91,7 @@ def find_windows(title_filter: str = "") -> list[dict]:
         matches.append({
             "hwnd": hwnd,
             "title": title,
+            "class_name": win32gui.GetClassName(hwnd),
             "rect": (left, top, right, bottom),
             "minimized": bool(win32gui.IsIconic(hwnd)),
         })
