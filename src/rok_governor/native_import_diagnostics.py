@@ -160,17 +160,88 @@ def _parse_pe(data: bytes) -> dict[str, Any]:
         else:
             raise NativeImportDiagnosticError("Import descriptor table exceeded its safety limit.")
 
+    # Delay-load imports use IMAGE_DELAYLOAD_DESCRIPTOR entries in directory 13.
+    # They may be stored as RVAs (dlattrRva) or VAs (legacy form).
+    delay_imports: dict[str, list[str]] = {}
+    delay_symbol_total = 0
+    delay_directory_rva = delay_directory_size = 0
+    if number_of_directories > 13 and optional_size >= directory_offset + 14 * 8:
+        delay_directory_rva = _u32(data, optional + directory_offset + 13 * 8)
+        delay_directory_size = _u32(data, optional + directory_offset + 13 * 8 + 4)
+
+    def delay_value_to_rva(value: int, rva_based: bool) -> int:
+        if rva_based:
+            return value
+        if value < image_base:
+            raise NativeImportDiagnosticError("Delay-load VA is below the image base.")
+        rva = value - image_base
+        if rva > 0xFFFFFFFF:
+            raise NativeImportDiagnosticError("Delay-load VA cannot be represented as an RVA.")
+        return int(rva)
+
+    def read_thunk_names(thunk_rva: int) -> list[str]:
+        nonlocal delay_symbol_total
+        thunk_offset = rva_to_offset(thunk_rva)
+        names: list[str] = []
+        for thunk_index in range(1_000_000):
+            item_offset = thunk_offset + thunk_index * pointer_size
+            value = _u64(data, item_offset) if pointer_size == 8 else _u32(data, item_offset)
+            if value == 0:
+                return names
+            ordinal_mask = 1 << (pointer_size * 8 - 1)
+            if value & ordinal_mask:
+                symbol = f"ordinal_{value & 0xFFFF}"
+            else:
+                hint_name_offset = rva_to_offset(value)
+                if hint_name_offset + 2 > len(data):
+                    raise NativeImportDiagnosticError("Delay-load import-by-name entry is truncated.")
+                symbol = _cstring(data, hint_name_offset + 2)
+            names.append(symbol)
+            delay_symbol_total += 1
+        raise NativeImportDiagnosticError("Delay-load thunk table exceeded its safety limit.")
+
+    if delay_directory_rva and delay_directory_size:
+        descriptor_offset = rva_to_offset(delay_directory_rva)
+        descriptor_limit = min(delay_directory_size // 32, 4096)
+        for descriptor_index in range(descriptor_limit):
+            entry = descriptor_offset + descriptor_index * 32
+            if entry + 32 > len(data):
+                raise NativeImportDiagnosticError("Delay-load descriptor table is truncated.")
+            fields = struct.unpack_from("<8I", data, entry)
+            if not any(fields):
+                break
+            attributes, name_value, _module_handle, iat_value, int_value, _bound, _unload, _timestamp = fields
+            rva_based = bool(attributes & 1)
+            name_rva = delay_value_to_rva(name_value, rva_based)
+            library = _cstring(data, rva_to_offset(name_rva)).lower()
+            thunk_value = int_value or iat_value
+            names = (
+                read_thunk_names(delay_value_to_rva(thunk_value, rva_based))
+                if thunk_value else []
+            )
+            delay_imports.setdefault(library, []).extend(names)
+        else:
+            raise NativeImportDiagnosticError("Delay-load descriptor table exceeded its safety limit.")
+
     matched = {
         library: sorted(set(name for name in names if _INPUT_API.search(name)), key=str.casefold)
         for library, names in imports.items()
     }
     matched = {library: names for library, names in matched.items() if names}
+    delay_matched = {
+        library: sorted(set(name for name in names if _INPUT_API.search(name)), key=str.casefold)
+        for library, names in delay_imports.items()
+    }
+    delay_matched = {library: names for library, names in delay_matched.items() if names}
     machine_names = {0x014C: "x86", 0x8664: "x64", 0xAA64: "ARM64", 0x01C4: "ARM"}
     return {
         "architecture": machine_names.get(machine, f"unknown (0x{machine:04X})"),
         "import_library_count": len(imports),
         "imported_symbol_count": symbol_total,
         "matched_input_related_imports": matched,
+        "delay_load_library_count": len(delay_imports),
+        "delay_load_imported_symbol_count": delay_symbol_total,
+        "matched_input_related_delay_load_imports": delay_matched,
         "dynamic_resolution_indicators": {
             library: [name for name in names if re.search(
                 r"(LoadLibrary|GetProcAddress|GetModuleHandle)", name, re.IGNORECASE
@@ -184,7 +255,7 @@ def _parse_pe(data: bytes) -> dict[str, Any]:
 
 
 def inspect_pe_imports(path: str | os.PathLike[str]) -> dict[str, Any]:
-    """Parse normal PE imports from a file without loading or executing it."""
+    """Parse normal and delay-load PE imports without loading or executing the file."""
     file_path = Path(path)
     try:
         with file_path.open("rb") as stream:
@@ -225,7 +296,7 @@ def inspect_game_imports(executable_path: str) -> dict[str, Any]:
         "input_sent": False,
         "focus_changed": False,
         "limitations": [
-            "Only the on-disk normal import table is inspected; delay-load imports are not included.",
+            "Only on-disk normal and delay-load import directories are inspected; runtime API resolution may still be incomplete.",
             "Static imports do not prove that an API is used at runtime.",
             "APIs resolved dynamically with GetProcAddress may not appear by their target function name.",
             "A missing match does not prove that the game does not use that input path.",
