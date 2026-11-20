@@ -40,6 +40,20 @@ def build_parser() -> argparse.ArgumentParser:
         "windows", help="List visible top-level windows and child HWNDs."
     )
 
+    input_diagnose_parser = subparsers.add_parser(
+        "input-diagnose",
+        help="Inspect game-window input geometry without moving the pointer or sending clicks.",
+    )
+    input_diagnose_parser.add_argument("--title", default="万国覚醒")
+    input_diagnose_parser.add_argument("--x", type=int, default=500,
+                                       help="Normalized horizontal target (0..1000; default center).")
+    input_diagnose_parser.add_argument("--y", type=int, default=500,
+                                       help="Normalized vertical target (0..1000; default center).")
+    input_diagnose_parser.add_argument(
+        "--screenshot-size", nargs=2, type=int, metavar=("WIDTH", "HEIGHT"),
+        help="Optional original screenshot dimensions used for coordinate mapping.",
+    )
+
     analyse_parser = subparsers.add_parser(
         "analyze", help="Run local OCR on a screenshot, optionally with Gemini."
     )
@@ -224,6 +238,23 @@ def main() -> int:
                         f'| size={child["size"]} | client={child["client_rect"]} '
                         f'| pid={child["process_id"]}'
                     )
+        return 0
+
+    if args.command == "input-diagnose":
+        from .input_controller import diagnose_input_geometry, WindowInputError
+
+        try:
+            geometry = diagnose_input_geometry(
+                args.title,
+                x_normalized=args.x,
+                y_normalized=args.y,
+                screenshot_size=tuple(args.screenshot_size) if args.screenshot_size else None,
+            )
+        except WindowInputError as exc:
+            print(f"Input diagnostic unavailable: {exc}")
+            return 1
+        print(json.dumps(geometry, indent=2, ensure_ascii=False))
+        print("\\nNo pointer movement, focus change, or game input was performed.")
         return 0
 
     if args.command == "capture-window":
