@@ -254,7 +254,7 @@ def main() -> int:
             print(f"VM host diagnostic unavailable: {exc}")
             return 1
         print(json.dumps(report, indent=2, ensure_ascii=False))
-        print("\\nThis diagnostic is read-only; it did not change Windows, BIOS/UEFI, or VM settings.")
+        print("\nThis diagnostic is read-only; it did not change Windows, BIOS/UEFI, or VM settings.")
         return 0
 
     if args.command == "input-diagnose":
