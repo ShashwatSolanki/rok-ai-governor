@@ -281,6 +281,65 @@ def execute_safe_actions(
     return [result]
 
 
+
+def _query_integrity_level(process_id: int) -> dict[str, Any]:
+    """Read a process token's mandatory integrity level without changing it."""
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
+    process = kernel32.OpenProcess(0x1000, False, process_id)  # PROCESS_QUERY_LIMITED_INFORMATION
+    if not process:
+        return {"available": False, "error_code": ctypes.get_last_error()}
+    token = ctypes.c_void_p()
+    try:
+        if not advapi32.OpenProcessToken(process, 0x0008, ctypes.byref(token)):  # TOKEN_QUERY
+            return {"available": False, "error_code": ctypes.get_last_error()}
+        try:
+            required = wintypes.DWORD()
+            advapi32.GetTokenInformation(token, 25, None, 0, ctypes.byref(required))
+            if not required.value:
+                return {"available": False, "error_code": ctypes.get_last_error()}
+            buffer = ctypes.create_string_buffer(required.value)
+            if not advapi32.GetTokenInformation(
+                token, 25, buffer, required.value, ctypes.byref(required)
+            ):
+                return {"available": False, "error_code": ctypes.get_last_error()}
+
+            class _SidAndAttributes(ctypes.Structure):
+                _fields_ = [("sid", ctypes.c_void_p), ("attributes", wintypes.DWORD)]
+
+            class _TokenMandatoryLabel(ctypes.Structure):
+                _fields_ = [("label", _SidAndAttributes)]
+
+            label = ctypes.cast(
+                buffer, ctypes.POINTER(_TokenMandatoryLabel)
+            ).contents
+            sid = label.label.sid
+            advapi32.GetSidSubAuthorityCount.restype = ctypes.POINTER(ctypes.c_ubyte)
+            count_ptr = advapi32.GetSidSubAuthorityCount(sid)
+            if not count_ptr:
+                return {"available": False, "error_code": ctypes.get_last_error()}
+            count = count_ptr.contents.value
+            advapi32.GetSidSubAuthority.restype = ctypes.POINTER(wintypes.DWORD)
+            rid_ptr = advapi32.GetSidSubAuthority(sid, count - 1)
+            if not rid_ptr:
+                return {"available": False, "error_code": ctypes.get_last_error()}
+            rid = int(rid_ptr.contents.value)
+            if rid < 0x2000:
+                level = "untrusted_or_low"
+            elif rid < 0x3000:
+                level = "medium"
+            elif rid < 0x4000:
+                level = "high"
+            elif rid < 0x5000:
+                level = "system"
+            else:
+                level = "protected_or_unknown"
+            return {"available": True, "level": level, "rid": rid}
+        finally:
+            kernel32.CloseHandle(token)
+    finally:
+        kernel32.CloseHandle(process)
+
 def diagnose_input_geometry(
     title_filter: str = "万国覚醒",
     *,
@@ -315,6 +374,10 @@ def diagnose_input_geometry(
         )
     target = candidates[0]
     hwnd = target["hwnd"]
+    import win32process
+
+    thread_id, target_process_id = win32process.GetWindowThreadProcessId(hwnd)
+    current_process_id = __import__("os").getpid()
     left, top, right, bottom = target["rect"]
     window_width, window_height = right - left, bottom - top
     screenshot_width, screenshot_height = screenshot_size or (window_width, window_height)
@@ -351,6 +414,14 @@ def diagnose_input_geometry(
         "virtual_desktop": virtual,
         "cursor_position": list(win32api.GetCursorPos()),
         "foreground_hwnd": win32gui.GetForegroundWindow(),
+        "window_class": win32gui.GetClassName(hwnd),
+        "window_style": hex(win32gui.GetWindowLong(hwnd, -16)),
+        "window_ex_style": hex(win32gui.GetWindowLong(hwnd, -20)),
+        "target_process_id": target_process_id,
+        "target_process_integrity": _query_integrity_level(target_process_id),
+        "current_process_id": current_process_id,
+        "current_process_integrity": _query_integrity_level(current_process_id),
+        "window_thread_id": thread_id,
         "child_windows": find_child_windows(hwnd),
         "input_sent": False,
         "focus_changed": False,
