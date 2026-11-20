@@ -226,3 +226,16 @@ python -m rok_governor uia-diagnose --title "万国覚醒"
 ```
 
 The report lists accessible element names, control types, automation IDs, bounds, and visibility. A sparse tree is expected for some Unity canvas-rendered clients; if the game exposes only its top-level window, UI Automation is not a useful click route and we should investigate a different native mechanism rather than fabricate controls from the screenshot.
+
+
+### Native Windows PE import-table diagnostic
+
+Inspect the on-disk import tables for the executable associated with a game HWND and the adjacent `UnityPlayer.dll` and `GameAssembly.dll` files:
+
+```powershell
+python -m rok_governor native-import-diagnose --hwnd 921252
+```
+
+Use the current HWND from `python -m rok_governor windows` if it changes. The command opens those three files read-only and reports statically imported functions related to Raw Input, XInput, DirectInput, mouse/keyboard input, and dynamic API lookup (such as `GetProcAddress`). Missing adjacent DLLs are reported rather than treated as fatal.
+
+This is an on-disk PE parser: it does not load or execute the binaries, inspect process memory, inject code, change focus, or send game input. It currently examines the normal import directory, not delay-load imports. Static imports are clues only: they do not prove an API is called at runtime, and functions resolved dynamically may not appear by their target name. An empty match list does not prove that an input API is unused.
