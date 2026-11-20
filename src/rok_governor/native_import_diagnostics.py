@@ -179,7 +179,7 @@ def _parse_pe(data: bytes) -> dict[str, Any]:
             raise NativeImportDiagnosticError("Delay-load VA cannot be represented as an RVA.")
         return int(rva)
 
-    def read_thunk_names(thunk_rva: int) -> list[str]:
+    def read_thunk_names(thunk_rva: int, rva_based: bool) -> list[str]:
         nonlocal delay_symbol_total
         thunk_offset = rva_to_offset(thunk_rva)
         names: list[str] = []
@@ -192,7 +192,8 @@ def _parse_pe(data: bytes) -> dict[str, Any]:
             if value & ordinal_mask:
                 symbol = f"ordinal_{value & 0xFFFF}"
             else:
-                hint_name_offset = rva_to_offset(value)
+                hint_name_rva = delay_value_to_rva(value, rva_based)
+                hint_name_offset = rva_to_offset(hint_name_rva)
                 if hint_name_offset + 2 > len(data):
                     raise NativeImportDiagnosticError("Delay-load import-by-name entry is truncated.")
                 symbol = _cstring(data, hint_name_offset + 2)
@@ -216,7 +217,7 @@ def _parse_pe(data: bytes) -> dict[str, Any]:
             library = _cstring(data, rva_to_offset(name_rva)).lower()
             thunk_value = int_value or iat_value
             names = (
-                read_thunk_names(delay_value_to_rva(thunk_value, rva_based))
+                read_thunk_names(delay_value_to_rva(thunk_value, rva_based), rva_based)
                 if thunk_value else []
             )
             delay_imports.setdefault(library, []).extend(names)
