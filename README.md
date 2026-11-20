@@ -1,6 +1,6 @@
 # RoK AI Governor
 
-A Gemini-powered secondary-account governor for Rise of Kingdoms. It observes the selected PC game window, reasons about the visible account state, and can dispatch a tightly bounded set of low-risk clicks. Background input is the default; foreground input is available for clients that ignore background window messages. It does not inspect game memory, modify the client, or connect to game services.
+A Gemini-powered secondary-account governor for Rise of Kingdoms. It observes the selected PC game window, reasons about the visible account state, and can dispatch a tightly bounded set of low-risk clicks. Background input is the default best-effort transport; foreground input is an explicit opt-in for clients that accept synthesized system mouse events. It does not inspect game memory, modify the client, or connect to game services.
 
 > **Automation scope:** unattended input is limited to visible, low-risk routine actions (screen inspection/navigation and gathering starts) with explicit Gemini coordinates, a confidence threshold, an allow-list, idempotency, and an execution audit. Purchases, gems, rare items, upgrades, troop training, text entry, and other higher-risk actions are not automated. Check the game's current terms before using third-party tools alongside your account.
 
@@ -15,7 +15,7 @@ A Gemini-powered secondary-account governor for Rise of Kingdoms. It observes th
 - Keep Gemini optional: local OCR works without an API key.
 - Ask Gemini to produce structured action commands with visible targets, preconditions, one normalized click target per screenshot, risk, confidence, and verification criteria.
 - Dispatch at most one eligible click per Gemini cycle through the configured input mode; re-capture and compare the live screen immediately before dispatch.
-- Optionally use foreground mouse input for game clients that ignore background messages. This mode focuses the game and moves the pointer, and remains behind an explicit `--input-mode foreground` option.
+- Optionally use foreground mouse input for clients that accept synthesized system mouse events. This mode focuses the game and moves the pointer, and remains behind an explicit `--input-mode foreground` option.
 - Persist command proposals and an idempotent execution audit in SQLite; ask Gemini to visually verify posted actions on the next strategy cycle.
 
 ## Requirements
@@ -29,7 +29,7 @@ A Gemini-powered secondary-account governor for Rise of Kingdoms. It observes th
 
 ```powershell
 py -m venv .venv
-.venv\Scripts\Activate.ps1
+.venv\\Scripts\\Activate.ps1
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 pip install -e .
@@ -63,19 +63,19 @@ python -m rok_governor capture-window
 Analyse an existing screenshot locally:
 
 ```powershell
-python -m rok_governor analyze screenshots\city.png
+python -m rok_governor analyze screenshots\\city.png
 ```
 
 Run local OCR plus Gemini visual interpretation:
 
 ```powershell
-python -m rok_governor analyze screenshots\city.png --gemini
+python -m rok_governor analyze screenshots\\city.png --gemini
 ```
 
 Override the Gemini model if needed:
 
 ```powershell
-python -m rok_governor analyze screenshots\city.png --gemini --gemini-model gemini-3.6-flash
+python -m rok_governor analyze screenshots\\city.png --gemini --gemini-model gemini-3.6-flash
 ```
 
 Capture the primary monitor instead:
@@ -95,22 +95,19 @@ The first OCR run may download EasyOCR model weights. OCR and Gemini output are 
 Start the resilient background monitor for the official PC client:
 
 ```powershell
-python -m rok_governor run --title "万国覚醒"
+python -m rok_governor run --title "万国覚醒" --observe-only
 ```
 
-The `run` command enables Gemini strategy reviews and bounded background input by default. It samples the game window every two seconds, runs OCR after meaningful visual changes or on the heartbeat, and syncs recommendations, visual task reviews, and execution attempts to the local SQLite database. Use `--observe-only` to disable all input. Gemini runs on its own schedule (default: every 180 seconds), independently of OCR; a local OCR failure does not block Gemini from interpreting the current screenshot. Gemini API failures use a separate exponential retry schedule, while capture or other monitor failures are recovered by the supervisor (5, 10, 20, 40, then at most 60 seconds). Unchanged diagnostic screenshots are discarded, and the screenshot folder is capped at the newest 200 retained captures. Use `Ctrl+C` to stop.
+The `run` command samples the game window every two seconds, runs OCR after meaningful visual changes or on the heartbeat, and syncs recommendations, visual task reviews, and execution attempts to the local SQLite database. Use `--observe-only` to keep all game input disabled while monitoring. Gemini runs on its own schedule (default: every 180 seconds), independently of OCR; a local OCR failure does not block Gemini from interpreting the current screenshot. Gemini API failures use a separate exponential retry schedule, while capture or other monitor failures are recovered by the supervisor (5, 10, 20, 40, then at most 60 seconds). Unchanged diagnostic screenshots are discarded, and the screenshot folder is capped at the newest 200 retained captures. Use `Ctrl+C` to stop.
 
 Useful overrides:
 
 ```powershell
-python -m rok_governor run --title "万国覚醒" --gemini-interval 300 --heartbeat 45
-python -m rok_governor run --title "万国覚醒" --duration 3600
+python -m rok_governor run --title "万国覚醒" --gemini-interval 300 --heartbeat 45 --observe-only
+python -m rok_governor run --title "万国覚醒" --duration 3600 --observe-only
 
-# Use real foreground mouse input for a client that ignores background messages
+# Foreground input takes focus and moves the physical pointer; it is not multitasking-safe
 python -m rok_governor run --title "万国覚醒" --input-mode foreground
-
-# Disable game input while keeping Gemini monitoring enabled
-python -m rok_governor run --title "万国覚醒" --observe-only
 ```
 
 Inspect the latest runtime heartbeat from another terminal:
@@ -163,11 +160,13 @@ Dismiss a proposal instead:
 python -m rok_governor command-done 1 --status dismissed
 ```
 
-Commands without eligible input actions remain in this queue for manual review. The unattended controller supports only one explicit left-click on a visible control per Gemini assessment, limited to inspect_screen, open_menu, open_academy (navigation only), select_tab, and start_gathering, with Gemini confidence of at least 0.88 and a low-risk label. Immediately before dispatch, it captures the window again and skips the click if the screen changed by more than 2% from the screenshot Gemini assessed. Each command fingerprint is reserved before dispatch so an identical proposal cannot be replayed automatically. Every attempt is logged in SQLite. A post-action screenshot and verification criterion are saved; the next Gemini cycle reviews the current screen and records verified, failed, or uncertain. The governor waits for that review cycle before dispatching another click. Coordinates are mapped from the exact decision-screenshot dimensions into the current Win32 window rectangle and then into client coordinates, with DPI-awareness and geometry recorded in each successful attempt. Edge checks use the actual client-area bounds instead of a fixed normalized inset, so visible controls near the top/side are not rejected solely for being near the screenshot edge. Blocked attempts retain the proposed target, coordinates, and geometry/rejection reason in the audit. Opening the Academy is navigation only; starting research remains excluded from unattended execution. A posted Windows message is never treated as proof the game accepted the click.
+Commands without eligible input actions remain in this queue for manual review. The unattended controller supports only one explicit left-click on a visible control per Gemini assessment, limited to inspect_screen, open_menu, open_academy (navigation only), select_tab, and start_gathering, with Gemini confidence of at least 0.88 and a low-risk label. Immediately before dispatch, it captures the window again and skips the click if the screen changed by more than 2% from the screenshot Gemini assessed. Each command fingerprint is reserved before dispatch so an identical proposal cannot be replayed automatically. Every attempt is logged in SQLite. A post-action screenshot and verification criterion are saved; the next Gemini cycle reviews the current screen and records verified, failed, or uncertain. The governor waits for that review cycle before dispatching another click. Coordinates are mapped from the exact decision-screenshot dimensions into the current Win32 window rectangle and then into client coordinates, with DPI-awareness and geometry recorded in each successful attempt. Edge checks use the actual client-area bounds instead of a fixed normalized inset, so visible controls near the top/side are not rejected solely for being near the screenshot edge. Blocked attempts retain the proposed target, coordinates, and geometry/rejection reason in the audit. Opening the Academy is navigation only; starting research remains excluded from unattended execution. A posted Windows message is never treated as proof the game accepted a click.
 
-The default `background` mode posts input messages without moving your mouse or changing focus. Some game clients ignore those messages. In that case, opt in to `--input-mode foreground`; it focuses the game and moves the physical pointer to deliver the click. Run foreground mode only when you are comfortable with the game taking focus. Captures try both Win32 `PrintWindow` modes; if both fail, an on-screen capture is used only while the selected game window is foreground, so the monitor does not mistake another app's pixels for the game.
+The default `background` mode posts `WM_MOUSEMOVE`, `WM_LBUTTONDOWN`, and `WM_LBUTTONUP` messages without moving your mouse or changing focus. This works only with clients that consume those window messages. The native Rise of Kingdoms Unity client investigated so far imports Windows Raw Input APIs from `UnityPlayer.dll` (`RegisterRawInputDevices`, `GetRawInputData`, and related functions). That is strong static evidence of a Raw Input code path, not proof that it is active for every game interaction. It does explain why ordinary posted mouse messages may be ignored: they do not synthesize hardware Raw Input.
 
-Background input is best-effort: some game/emulator renderers ignore Windows background mouse messages. In that case the governor records the failure and never silently falls back to foreground input. Keep the game window restored; minimised GPU rendering can produce stale or blank captures. Gemini calls use API quota and send screenshots to Google. The first unattended run should be watched closely while you confirm that your specific client accepts the selected input mode.
+Foreground `SendInput` is a different, system-wide input path. It focuses the game and moves the physical pointer, so it interrupts use of other desktop apps; it is not a solution for simultaneous multitasking, and it is not guaranteed to satisfy a game's Raw Input handling. The controller never silently falls back from background to foreground mode. For the native Unity client, keep the governor in `--observe-only` while we finish evaluating safe input options rather than repeatedly dispatching clicks that the game may ignore. Captures try both Win32 `PrintWindow` modes; if both fail, an on-screen capture is used only while the selected game window is foreground, so the monitor does not mistake another app's pixels for the game's pixels.
+
+Keep the game window restored; minimised GPU rendering can produce stale or blank captures. Gemini calls use API quota and send screenshots to Google. The first unattended run should be watched closely while you confirm that your specific client accepts the selected input mode.
 
 ## Project layout
 
@@ -201,7 +200,6 @@ observations/      # local JSON output (git-ignored)
 
 Only allow-listed, low-risk background click actions are automated; broader gameplay actions are deliberately excluded.
 
-
 ### Native Windows process/input-path diagnostic
 
 Inspect the official PC client's process metadata and names of modules already loaded in that process:
@@ -226,7 +224,6 @@ python -m rok_governor uia-diagnose --title "万国覚醒"
 ```
 
 The report lists accessible element names, control types, automation IDs, bounds, and visibility. A sparse tree is expected for some Unity canvas-rendered clients; if the game exposes only its top-level window, UI Automation is not a useful click route and we should investigate a different native mechanism rather than fabricate controls from the screenshot.
-
 
 ### Native Windows PE import-table diagnostic
 
