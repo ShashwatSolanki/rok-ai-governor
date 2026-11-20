@@ -200,6 +200,24 @@ observations/      # local JSON output (git-ignored)
 
 Only allow-listed, low-risk background click actions are automated; broader gameplay actions are deliberately excluded.
 
+### Isolated Windows VM path for native Unity clients
+
+The official native RoK client uses a Unity input path that may ignore ordinary background `WM_MOUSE` messages. Foreground input takes over the host desktop, so it is not suitable when the host must remain available for another account or other work.
+
+A Windows guest VM is the next option to evaluate. The intended design is to run the official RoK client and a small governor agent inside the guest. The host governor will exchange screenshots and bounded action requests with that guest agent over a private, authenticated VM-only channel. Input will be generated inside the guest OS, not injected into the host game process and not sent through the VMware console's physical mouse forwarding. This should keep the host pointer and host focus independent, subject to VM and game compatibility.
+
+VMware Workstation Pro is the first hypervisor candidate. VMware currently documents Workstation Pro as free for personal use and supports Windows guests; see the [official desktop hypervisor FAQ](https://www.vmware.com/docs/desktop-hypervisor-faqs). Enable 3D acceleration in the VM settings, but note that VMware exposes a virtual graphics adapter rather than guaranteeing direct GPU passthrough. The game may still refuse to launch or render correctly in a guest. Use a properly licensed Windows guest installation and install the game only from Lilith's official source.
+
+Before installing a guest, run the read-only host check:
+
+```powershell
+python -m rok_governor vm-diagnose
+```
+
+It reports Windows version, CPU/core count, firmware virtualization status, host hypervisor presence, installed graphics adapters and driver versions, and free system-drive space. It suggests a conservative starting VM allocation where host resources permit. It does not enable virtualization, change Windows features, modify BIOS/UEFI settings, install software, or create a VM.
+
+Do not disable Hyper-V, Memory Integrity, VBS, or other Windows security features just to make the VM run without first reviewing the security and compatibility trade-offs. We will decide the hypervisor configuration from the diagnostic report. The first guest integration milestone is capture-only; guest input remains disabled until the game is visibly working and the guest-side channel is verified.
+
 ### Native Windows process/input-path diagnostic
 
 Inspect the official PC client's process metadata and names of modules already loaded in that process:
