@@ -40,6 +40,11 @@ def build_parser() -> argparse.ArgumentParser:
         "windows", help="List visible top-level windows and child HWNDs."
     )
 
+    subparsers.add_parser(
+        "vm-diagnose",
+        help="Read host CPU, RAM, GPU, disk, and virtualization readiness for a Windows VM.",
+    )
+
     input_diagnose_parser = subparsers.add_parser(
         "input-diagnose",
         help="Inspect game-window input geometry without moving the pointer or sending clicks.",
@@ -238,6 +243,18 @@ def main() -> int:
                         f'| size={child["size"]} | client={child["client_rect"]} '
                         f'| pid={child["process_id"]}'
                     )
+        return 0
+
+    if args.command == "vm-diagnose":
+        from .vm_host import diagnose_vm_host
+
+        try:
+            report = diagnose_vm_host()
+        except (RuntimeError, OSError) as exc:
+            print(f"VM host diagnostic unavailable: {exc}")
+            return 1
+        print(json.dumps(report, indent=2, ensure_ascii=False))
+        print("\\nThis diagnostic is read-only; it did not change Windows, BIOS/UEFI, or VM settings.")
         return 0
 
     if args.command == "input-diagnose":
