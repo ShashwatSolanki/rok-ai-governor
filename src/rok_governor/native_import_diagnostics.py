@@ -46,7 +46,7 @@ def _u64(data: bytes, offset: int) -> int:
 def _cstring(data: bytes, offset: int, limit: int = 4096) -> str:
     if offset < 0 or offset >= len(data):
         raise NativeImportDiagnosticError("PE string points outside the file.")
-    end = data.find(b"\\0", offset, min(len(data), offset + limit))
+    end = data.find(b"\0", offset, min(len(data), offset + limit))
     if end < 0:
         raise NativeImportDiagnosticError("Unterminated or oversized PE string.")
     return data[offset:end].decode("ascii", errors="replace")
@@ -56,7 +56,7 @@ def _parse_pe(data: bytes) -> dict[str, Any]:
     if len(data) < 0x40 or data[:2] != b"MZ":
         raise NativeImportDiagnosticError("Not a valid DOS/PE image.")
     pe_offset = _u32(data, 0x3C)
-    if pe_offset > len(data) - 24 or data[pe_offset:pe_offset + 4] != b"PE\\0\\0":
+    if pe_offset > len(data) - 24 or data[pe_offset:pe_offset + 4] != b"PE\0\0":
         raise NativeImportDiagnosticError("Missing or out-of-range PE signature.")
 
     coff = pe_offset + 4
