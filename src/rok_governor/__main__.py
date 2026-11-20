@@ -10,6 +10,10 @@ def _run_uia_diagnostic(argv: list[str]) -> int:
         description="Inventory accessible controls in a Windows game window without sending input.",
     )
     parser.add_argument("--title", default="万国覚醒")
+    parser.add_argument(
+        "--hwnd", type=lambda value: int(value, 0), default=None,
+        help="Attach by native window handle (decimal or 0x-prefixed hex), bypassing title matching.",
+    )
     parser.add_argument("--max-elements", type=int, default=500)
     parser.add_argument("--max-depth", type=int, default=8)
     args = parser.parse_args(argv)
@@ -19,6 +23,7 @@ def _run_uia_diagnostic(argv: list[str]) -> int:
     try:
         result = inspect_uia_tree(
             args.title,
+            hwnd=args.hwnd,
             max_elements=args.max_elements,
             max_depth=args.max_depth,
         )
