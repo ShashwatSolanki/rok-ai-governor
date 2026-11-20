@@ -35,9 +35,36 @@ def _run_uia_diagnostic(argv: list[str]) -> int:
     return 0
 
 
+
+def _run_native_process_diagnostic(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(
+        prog="python -m rok_governor native-process-diagnose",
+        description="Inspect native game process metadata and loaded module names (read-only).",
+    )
+    parser.add_argument(
+        "--hwnd", type=lambda value: int(value, 0), required=True,
+        help="Game window handle in decimal or 0x-prefixed hexadecimal.",
+    )
+    args = parser.parse_args(argv)
+
+    from .native_process_diagnostics import (
+        inspect_native_process, NativeProcessDiagnosticError,
+    )
+
+    try:
+        result = inspect_native_process(args.hwnd)
+    except NativeProcessDiagnosticError as exc:
+        print(f"Native process diagnostic unavailable: {exc}")
+        return 1
+    print(json.dumps(result, indent=2, ensure_ascii=False))
+    print("Read-only inspection: no process memory reads/writes, code injection, focus changes, or game input.")
+    return 0
+
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "uia-diagnose":
         raise SystemExit(_run_uia_diagnostic(sys.argv[2:]))
+    if len(sys.argv) > 1 and sys.argv[1] == "native-process-diagnose":
+        raise SystemExit(_run_native_process_diagnostic(sys.argv[2:]))
 
     from .cli import main
 
