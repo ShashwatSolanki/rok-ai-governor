@@ -71,7 +71,7 @@ def inspect_uia_tree(
                 "handle": int(info.handle or 0),
                 "rectangle": [rect.left, rect.top, rect.right, rect.bottom],
                 "enabled": bool(info.enabled),
-                "offscreen": bool(info.offscreen),
+                "offscreen": bool(info.is_offscreen),
             })
         except Exception as exc:
             elements.append({
