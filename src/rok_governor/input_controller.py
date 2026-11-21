@@ -243,6 +243,47 @@ def post_click(
     }
 
 
+def post_swipe(
+    title_filter: str,
+    *,
+    x1_normalized: int,
+    y1_normalized: int,
+    x2_normalized: int,
+    y2_normalized: int,
+    duration_ms: int = 400,
+    screenshot_size: tuple[int, int] | None = None,
+    input_mode: str = "adb",
+) -> dict[str, Any]:
+    """Perform a swipe/drag gesture between two normalized points."""
+    sw = screenshot_size[0] if screenshot_size else 1600
+    sh = screenshot_size[1] if screenshot_size else 900
+    p1_x = max(0, min(sw - 1, round(x1_normalized * sw / 1000)))
+    p1_y = max(0, min(sh - 1, round(y1_normalized * sh / 1000)))
+    p2_x = max(0, min(sw - 1, round(x2_normalized * sw / 1000)))
+    p2_y = max(0, min(sh - 1, round(y2_normalized * sh / 1000)))
+
+    if input_mode == "adb":
+        from .adb_input import adb_swipe
+        adb_swipe(p1_x, p1_y, p2_x, p2_y, duration_ms=duration_ms)
+        delivery = "adb_swipe"
+    else:
+        delivery = "swipe_simulated"
+
+    return {
+        "x1_normalized": x1_normalized,
+        "y1_normalized": y1_normalized,
+        "x2_normalized": x2_normalized,
+        "y2_normalized": y2_normalized,
+        "p1": [p1_x, p1_y],
+        "p2": [p2_x, p2_y],
+        "duration_ms": duration_ms,
+        "screenshot_size": [sw, sh],
+        "sent_at": time.time(),
+        "input_mode": input_mode,
+        "delivery": delivery,
+    }
+
+
 def execute_safe_actions(
     title_filter: str,
     command: dict[str, Any],
@@ -250,11 +291,11 @@ def execute_safe_actions(
     input_mode: str = "background",
     minimum_confidence: float = 0.70,
 ) -> list[dict[str, Any]]:
-    """Execute one allow-listed click command from a fresh Gemini assessment.
+    """Execute one allow-listed click or swipe command from a fresh Gemini assessment.
 
     All in-game governance actions (gathering, harvesting, upgrading buildings,
-    researching tech, training troops, alliance help, menu navigation) are
-    permitted for autonomous city growth. Real-money purchases are strictly
+    researching tech, training troops, alliance help, menu navigation, map dragging)
+    are permitted for autonomous city growth. Real-money purchases are strictly
     forbidden.
     """
     allowed_command_types = {
@@ -317,21 +358,34 @@ def execute_safe_actions(
 
     actions = command.get("input_actions")
     if not isinstance(actions, list) or len(actions) != 1:
-        raise WindowInputError("Exactly one click is allowed per visual assessment.")
+        raise WindowInputError("Exactly one action is allowed per visual assessment.")
     action = actions[0]
-    if not isinstance(action, dict) or action.get("type") != "click":
-        raise WindowInputError("Only explicit left-click actions are supported.")
+    action_type = action.get("type", "click")
+    if not isinstance(action, dict) or action_type not in ("click", "swipe"):
+        raise WindowInputError("Only explicit left-click and swipe actions are supported.")
     purpose = action.get("purpose")
     if not isinstance(purpose, str) or not purpose.strip() or len(purpose) > 160:
-        raise WindowInputError("Every click needs a concise visible-target purpose.")
+        raise WindowInputError("Every action needs a concise visible-target purpose.")
 
-    result = post_click(
-        title_filter,
-        x_normalized=action.get("x"),
-        y_normalized=action.get("y"),
-        screenshot_size=command.get("screenshot_size"),
-        input_mode=input_mode,
-    )
+    if action_type == "swipe":
+        result = post_swipe(
+            title_filter,
+            x1_normalized=action.get("x", 500),
+            y1_normalized=action.get("y", 500),
+            x2_normalized=action.get("x2", 500),
+            y2_normalized=action.get("y2", 500),
+            duration_ms=action.get("duration_ms", 400),
+            screenshot_size=command.get("screenshot_size"),
+            input_mode=input_mode,
+        )
+    else:
+        result = post_click(
+            title_filter,
+            x_normalized=action.get("x"),
+            y_normalized=action.get("y"),
+            screenshot_size=command.get("screenshot_size"),
+            input_mode=input_mode,
+        )
     result["purpose"] = purpose.strip()
     return [result]
 

@@ -16,6 +16,20 @@ def adb_tap(x: int, y: int) -> None:
     subprocess.run(["adb", "shell", "input", "tap", str(x), str(y)], check=True)
 
 
+def adb_swipe(x1: int, y1: int, x2: int, y2: int, duration_ms: int = 400) -> None:
+    """Perform an ADB swipe/drag gesture between two coordinates.
+
+    Args:
+        x1, y1: Start pixel coordinates on the Android screen.
+        x2, y2: End pixel coordinates on the Android screen.
+        duration_ms: Duration of the swipe motion in milliseconds.
+    """
+    subprocess.run(
+        ["adb", "shell", "input", "swipe", str(x1), str(y1), str(x2), str(y2), str(duration_ms)],
+        check=True,
+    )
+
+
 def adb_screencap() -> Image.Image:
     """Capture the Android emulator screen via ADB and return a PIL Image.
 
