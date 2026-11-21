@@ -55,13 +55,6 @@ def main() -> None:
     env = os.environ.copy()
     env["ROKGOV_GOAL"] = args.goal
 
-    # Auto-resume any historical automation pause
-    try:
-        from rok_governor.execution_store import ExecutionStore
-        ExecutionStore().resume_automation()
-    except Exception:
-        pass
-
     cmd = [
         sys.executable,
         "-m",

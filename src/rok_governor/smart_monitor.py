@@ -305,12 +305,10 @@ def run_smart_monitor(
                             print(
                                 "Previous visual assessment was unsuccessful/uncertain: "
                                 f"{automation_pause['reason']}. "
-                                "Auto-clearing pause for continuous trial city autonomy...",
+                                "Automation remains paused. Inspect the game, then run "
+                                "'python -m rok_governor automation-resume' to resume clicks.",
                                 flush=True,
                             )
-                            execution_store.resume_automation()
-                            automation_pause = None
-                            candidate_commands = raw_commands
                         sent_action = False
                         for proposed in candidate_commands:
                             if not proposed.get("input_actions"):

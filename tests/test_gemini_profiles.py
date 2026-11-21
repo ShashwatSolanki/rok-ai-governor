@@ -1,6 +1,9 @@
 import os
 import unittest
+from io import BytesIO
 from unittest.mock import patch
+
+from PIL import Image
 
 from rok_governor.gemini_profiles import (
     GeminiProfile,
@@ -8,6 +11,7 @@ from rok_governor.gemini_profiles import (
     generate_with_profiles,
     load_candidate_profiles,
     load_gemini_profiles,
+    _prepare_provider_image,
 )
 
 
@@ -125,6 +129,18 @@ class GeminiProfileTests(unittest.TestCase):
         self.assertEqual(profiles[2].model, "gemini-2.5-flash")
         self.assertEqual(profiles[2].api_key, "secret-one")
         self.assertEqual(profiles[3].model, "gemini-3.5-flash-lite")
+
+    def test_provider_image_is_reencoded_as_jpeg(self):
+        image = Image.new("RGBA", (300, 180), (40, 100, 180, 255))
+        source = BytesIO()
+        image.save(source, format="PNG")
+
+        compressed = _prepare_provider_image(source.getvalue())
+
+        self.assertTrue(compressed.startswith(b"\xff\xd8"))
+        with Image.open(BytesIO(compressed)) as prepared:
+            self.assertEqual(prepared.format, "JPEG")
+            self.assertEqual(prepared.size, (300, 180))
 
 
 if __name__ == "__main__":

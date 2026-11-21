@@ -5,6 +5,7 @@ import os
 import re
 import base64
 import json
+from io import BytesIO
 from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Iterable
 
@@ -18,6 +19,7 @@ _RETRYABLE_ERROR_MARKERS = (
     "401", "unauthenticated", "api_key_invalid", "invalid api key",
     "403", "permission_denied", "404", "not_found", "model not found",
     "402", "payment required", "insufficient credits",
+    "413", "payload too large", "request entity too large",
     "500", "internal", "502", "503", "unavailable", "504", "deadline exceeded",
     "model is not available", "model_decommissioned", "unsupported model",
 )
@@ -145,7 +147,8 @@ def request_profile(profile: GeminiProfile, prompt: str, image_bytes: bytes, *, 
             config=types.GenerateContentConfig(response_mime_type="application/json",
                 response_schema=schema, temperature=temperature))
     endpoint = "https://api.groq.com/openai/v1/chat/completions" if profile.provider == "Groq" else "https://openrouter.ai/api/v1/chat/completions"
-    image_data = base64.b64encode(image_bytes).decode("ascii")
+    provider_image = _prepare_provider_image(image_bytes)
+    image_data = base64.b64encode(provider_image).decode("ascii")
     headers = {"Authorization": f"Bearer {profile.api_key}", "Content-Type": "application/json"}
     if profile.provider == "OpenRouter":
         headers.update({"HTTP-Referer": "https://github.com/rok-ai-governor", "X-Title": "RoK AI Governor"})
@@ -153,13 +156,38 @@ def request_profile(profile: GeminiProfile, prompt: str, image_bytes: bytes, *, 
         "model": profile.model,
         "messages": [{"role": "user", "content": [
             {"type": "text", "text": prompt + "\nReturn a single JSON object matching this schema:\n" + json.dumps(schema)},
-            {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_data}"}},
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_data}"}},
         ]}],
         "response_format": {"type": "json_object"}, "temperature": temperature,
     }, timeout=timeout_ms / 1000)
     response.raise_for_status()
     payload = response.json()
     return type("ProviderResponse", (), {"text": payload["choices"][0]["message"]["content"]})()
+
+
+def _prepare_provider_image(image_bytes: bytes, *, max_bytes: int = 8 * 1024 * 1024) -> bytes:
+    """Convert screenshots to a compact JPEG below provider request limits."""
+    from PIL import Image
+
+    with Image.open(BytesIO(image_bytes)) as source:
+        image = source.convert("RGB")
+    image.thumbnail((2560, 2560), Image.Resampling.LANCZOS)
+    for quality in (88, 82, 76, 70, 64):
+        output = BytesIO()
+        image.save(output, format="JPEG", quality=quality, optimize=True)
+        result = output.getvalue()
+        if len(result) <= max_bytes:
+            return result
+    while image.width > 960 or image.height > 960:
+        image.thumbnail((int(image.width * 0.8), int(image.height * 0.8)), Image.Resampling.LANCZOS)
+        output = BytesIO()
+        image.save(output, format="JPEG", quality=64, optimize=True)
+        result = output.getvalue()
+        if len(result) <= max_bytes:
+            return result
+    if len(result) > max_bytes:
+        raise ValueError("Screenshot could not be reduced below the provider image size limit.")
+    return result
 
 
 def is_retryable_profile_error(error: Exception) -> bool:
