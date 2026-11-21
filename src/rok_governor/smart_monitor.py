@@ -83,13 +83,11 @@ def _write_runtime_status(
     return path
 
 
-def _prune_screenshots(directory: str | Path, keep: int = 200) -> None:
-    """Bound diagnostic screenshot storage while preserving the newest captures."""
-    files = sorted(
-        Path(directory).glob("window_*.png"),
-        key=lambda item: item.stat().st_mtime,
-        reverse=True,
-    )
+def _prune_screenshots(directory: str | Path, keep: int = 50) -> None:
+    """Keep only the newest diagnostic captures in the shared screenshot folder."""
+    root = Path(directory)
+    files = [*root.glob("window_*.png"), *root.glob("desktop_*.png")]
+    files.sort(key=lambda item: item.stat().st_mtime, reverse=True)
     for old_file in files[keep:]:
         old_file.unlink(missing_ok=True)
 
@@ -105,6 +103,7 @@ def run_smart_monitor(
     profile: str = "pc",
     database: str = "data/account_history.sqlite3",
     screenshot_dir: str = "screenshots",
+    screenshot_retention: int = 50,
     output_dir: str = "observations",
     gemini_enabled: bool = False,
     gemini_interval: float = 12.0,
@@ -121,6 +120,8 @@ def run_smart_monitor(
     """
     if sample_interval < 0.25:
         raise ValueError("--sample-interval must be at least 0.25 seconds.")
+    if screenshot_retention < 1:
+        raise ValueError("--screenshot-retention must be at least 1.")
     if not 0.0 < change_threshold <= 1.0:
         raise ValueError("--change-threshold must be between 0 and 1.")
     if stable_frames < 1:
@@ -447,7 +448,7 @@ def run_smart_monitor(
                 if screenshot is not None and not keep_screenshot:
                     screenshot.unlink(missing_ok=True)
             if keep_screenshot:
-                _prune_screenshots(screenshot_dir)
+                _prune_screenshots(screenshot_dir, keep=screenshot_retention)
             _write_runtime_status(database, state="running" if runtime_error is None else "degraded", title=title, started_at=session_started_at, last_capture_at=last_capture_at, last_ocr_at=last_ocr_at, last_gemini_at=last_gemini_at, last_error=runtime_error, consecutive_failures=gemini_failures, observation_count=observation_number, automation_enabled=automation_enabled and gemini_enabled, input_mode=input_mode)
 
             if duration and time.monotonic() - started >= duration:
@@ -477,6 +478,7 @@ def run_resilient_monitor(
     profile: str = "pc",
     database: str = "data/account_history.sqlite3",
     screenshot_dir: str = "screenshots",
+    screenshot_retention: int = 50,
     output_dir: str = "observations",
     gemini_interval: float = 12.0,
     gemini_model: str | None = None,
@@ -528,6 +530,7 @@ def run_resilient_monitor(
                 profile=profile,
                 database=database,
                 screenshot_dir=screenshot_dir,
+                screenshot_retention=screenshot_retention,
                 output_dir=output_dir,
                 gemini_enabled=True,
                 gemini_interval=gemini_interval,

@@ -109,6 +109,8 @@ def build_parser() -> argparse.ArgumentParser:
     smart_parser.add_argument("--profile", choices=("bluestacks", "pc"), default="pc")
     smart_parser.add_argument("--database", default="data/account_history.sqlite3")
     smart_parser.add_argument("--screenshot-dir", default="screenshots")
+    smart_parser.add_argument("--screenshot-retention", type=int, default=50,
+                              help="Maximum recent window/desktop screenshots to keep.")
     smart_parser.add_argument("--output-dir", default="observations")
     smart_parser.add_argument("--gemini", action="store_true",
                               help="Ask Gemini for strategy recommendations periodically.")
@@ -137,6 +139,8 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--profile", choices=("bluestacks", "pc"), default="pc")
     run_parser.add_argument("--database", default="data/account_history.sqlite3")
     run_parser.add_argument("--screenshot-dir", default="screenshots")
+    run_parser.add_argument("--screenshot-retention", type=int, default=50,
+                            help="Maximum recent window/desktop screenshots to keep.")
     run_parser.add_argument("--output-dir", default="observations")
     run_parser.add_argument("--gemini-model", default=None)
     run_parser.add_argument("--retry-delay", type=float, default=5.0)
@@ -547,6 +551,7 @@ def main() -> int:
             profile=args.profile,
             database=args.database,
             screenshot_dir=args.screenshot_dir,
+            screenshot_retention=args.screenshot_retention,
             output_dir=args.output_dir,
             gemini_enabled=args.gemini,
             gemini_interval=args.gemini_interval,
@@ -570,6 +575,7 @@ def main() -> int:
             profile=args.profile,
             database=args.database,
             screenshot_dir=args.screenshot_dir,
+            screenshot_retention=args.screenshot_retention,
             output_dir=args.output_dir,
             gemini_interval=args.gemini_interval,
             gemini_model=args.gemini_model,

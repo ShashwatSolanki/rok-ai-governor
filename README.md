@@ -72,6 +72,8 @@ Fallback providers receive the screenshot and prompt, so they provide resilience
 
 ## Usage
 
+The `run` and `monitor` commands keep the newest 50 window/desktop screenshots in the screenshot directory and delete older captures. Change the cap with `--screenshot-retention`, for example `--screenshot-retention 25`.
+
 List visible application windows and their titles:
 
 ```powershell
