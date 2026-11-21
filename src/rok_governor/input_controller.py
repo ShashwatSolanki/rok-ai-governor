@@ -251,7 +251,14 @@ def execute_safe_actions(
     minimum_confidence: float = 0.88,
 ) -> list[dict[str, Any]]:
     """Execute one allow-listed low-risk click from a fresh Gemini assessment."""
-    allowed_command_types = {"inspect_screen", "open_menu", "open_academy", "select_tab", "start_gathering"}
+    allowed_command_types = {
+        "inspect_screen",
+        "open_menu",
+        "open_academy",
+        "select_tab",
+        "start_gathering",
+        "claim_reward",
+    }
     if command.get("action_type") not in allowed_command_types:
         raise WindowInputError("Command type is not enabled for unattended execution.")
     if str(command.get("risk", "unknown")).strip().casefold() != "low":
