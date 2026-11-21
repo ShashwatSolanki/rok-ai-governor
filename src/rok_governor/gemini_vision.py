@@ -14,7 +14,7 @@ from google import genai
 from google.genai import types
 
 # Keep the model configurable: availability and service load can change.
-DEFAULT_MODEL = "gemini-3.6-flash"
+DEFAULT_MODEL = "gemini-2.5-flash"
 GEMINI_TIMEOUT_MS = 45_000
 
 COMMANDER_SCHEMA = {

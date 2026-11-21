@@ -210,39 +210,63 @@ def advise_with_gemini(
 
     with path.open("rb") as image_file:
         image_bytes = image_file.read()
-    selected_model = model or os.getenv("GEMINI_MODEL", DEFAULT_MODEL)
+    primary_model = model or os.getenv("GEMINI_MODEL", DEFAULT_MODEL)
+    candidate_models = [primary_model]
+    for alt in ("gemini-2.5-flash", "gemini-3.5-flash-lite"):
+        if alt not in candidate_models:
+            candidate_models.append(alt)
+
     client = genai.Client(
         api_key=api_key,
         http_options=types.HttpOptions(
+            api_version="v1beta",
             timeout=120_000,
-            # Let the SDK retry transient 429/5xx responses instead of failing
-            # the entire advice cycle on a single overloaded Gemini request.
-            retry_options=types.HttpRetryOptions(attempts=3),
+            retry_options=types.HttpRetryOptions(attempts=2),
         ),
     )
-    response = client.models.generate_content(
-        model=selected_model,
-        contents=[
-            prompt,
-            types.Part.from_bytes(data=image_bytes, mime_type="image/png"),
-        ],
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema=ADVICE_SCHEMA,
-            temperature=0.2,
-        ),
-    )
+
+    response = None
+    used_model = primary_model
+    last_exc: Exception | None = None
+
+    for m in candidate_models:
+        try:
+            response = client.models.generate_content(
+                model=m,
+                contents=[
+                    prompt,
+                    types.Part.from_bytes(data=image_bytes, mime_type="image/png"),
+                ],
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=ADVICE_SCHEMA,
+                    temperature=0.2,
+                ),
+            )
+            used_model = m
+            break
+        except Exception as exc:
+            last_exc = exc
+            err_str = str(exc)
+            if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "404" in err_str:
+                print(f"[WARN] Model {m} unavailable ({exc}); trying fallback model...", flush=True)
+                continue
+            raise
+
+    if response is None:
+        raise RuntimeError(f"All candidate models exhausted: {last_exc}") from last_exc
+
     if not response.text:
-        raise RuntimeError("Gemini returned an empty farm-advice response.")
+        raise RuntimeError(f"Gemini ({used_model}) returned an empty farm-advice response.")
     try:
         advice = json.loads(response.text)
     except json.JSONDecodeError as exc:
-        raise RuntimeError("Gemini returned invalid JSON for farm advice.") from exc
+        raise RuntimeError(f"Gemini ({used_model}) returned invalid JSON for farm advice.") from exc
 
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "provider": "Google Gemini",
-        "model": selected_model,
+        "model": used_model,
         "mode": "gemini_strategy",
         "source_screenshot": str(path),
         "advice": advice,
