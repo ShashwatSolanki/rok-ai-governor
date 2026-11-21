@@ -4,7 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -191,6 +191,17 @@ class ExecutionStore:
         if row is None or not row["paused"]:
             return None
         return dict(row)
+
+    def recently_failed_actions(self, cooldown_seconds: int = 120) -> set[tuple[str, str]]:
+        """Return recently failed/uncertain action names to avoid immediate repeats."""
+        cutoff = (datetime.now(timezone.utc) - timedelta(seconds=max(0, cooldown_seconds))).isoformat()
+        with connect_database(self.path) as db:
+            rows = db.execute(
+                """SELECT command_title, action_type FROM automation_executions
+                   WHERE status IN ('failed', 'uncertain') AND finished_at >= ?""",
+                (cutoff,),
+            ).fetchall()
+        return {(str(title).strip().casefold(), str(action_type).strip().casefold()) for title, action_type in rows}
 
     def resume_automation(self) -> bool:
         """Clear a visual-verification pause after the operator reviews the game."""

@@ -274,6 +274,7 @@ def run_smart_monitor(
                         execution_store = ExecutionStore(database)
                         execution_reviews_saved = execution_store.record_reviews(advice)
                         automation_pause = execution_store.automation_pause()
+                        recently_failed_actions = execution_store.recently_failed_actions()
                         raw_commands = list((advice.get("advice") or {}).get("commands") or [])
                         if not raw_commands:
                             import re
@@ -308,16 +309,29 @@ def run_smart_monitor(
                             )
                         elif automation_enabled and automation_pause:
                             print(
-                                "Automation remains paused from a previous visual assessment "
-                                "(this reason is stored until manually resumed): "
+                                "Previous action was assessed as unsuccessful or uncertain: "
                                 f"{automation_pause['reason']}. "
-                                "No click will be sent. This cycle used the fresh capture shown above. "
-                                "Inspect the game, then run "
-                                "'python -m rok_governor automation-resume' to resume clicks.",
+                                "Automatically clearing the pause and continuing; the failed action "
+                                "is on cooldown to avoid repeating it immediately.",
                                 flush=True,
                             )
+                            execution_store.resume_automation()
+                            automation_pause = None
+                            candidate_commands = raw_commands
                         sent_action = False
                         for proposed in candidate_commands:
+                            command_key = (
+                                str(proposed.get("title") or "").strip().casefold(),
+                                str(proposed.get("action_type") or "").strip().casefold(),
+                            )
+                            if command_key in recently_failed_actions:
+                                print(
+                                    f"Automation skipped '{proposed.get('title', 'untitled command')}': "
+                                    "the same action recently failed or had uncertain verification; "
+                                    "it will be reconsidered after the cooldown.",
+                                    flush=True,
+                                )
+                                continue
                             event_rejection = event_action_rejection(
                                 proposed, advice.get("advice") or {}
                             )

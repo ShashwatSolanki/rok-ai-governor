@@ -150,13 +150,13 @@ Inspect recent background input attempts:
 python -m rok_governor automation-log
 ```
 
-If Gemini visually marks a posted click as failed or uncertain, unattended input pauses and remains paused across restarts. Review the current game screen and the matching entry in `automation-log`, then explicitly resume input:
+If Gemini visually marks a posted click as failed or uncertain, the governor automatically continues. It puts that same action title/type on a two-minute cooldown so the bot can consider other proposals instead of immediately repeating a questionable click. `automation-log` retains the review history. The manual `automation-resume` command remains available for explicit operator control:
 
 ```powershell
 python -m rok_governor automation-resume
 ```
 
-The `health` command reports this pause and its reason. A verified click does not pause the governor; a failed or uncertain visual review does. Posting an input message still does not prove the game accepted it.
+Posting an input message still does not prove the game accepted it; visual reviews remain recorded in the execution log.
 
 The health command reads `data/runtime_status.json` and reports heartbeat freshness, the last successful capture, OCR and Gemini operations, whether background automation is enabled, pending/completed recommendation counts, current monitor state, and the latest error. A heartbeat older than three minutes is flagged as possibly stale. It is a local diagnostic snapshot; if the process is killed abruptly, its state may remain at the last recorded heartbeat rather than changing to `stopped`.
 
