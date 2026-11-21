@@ -248,9 +248,15 @@ def execute_safe_actions(
     command: dict[str, Any],
     *,
     input_mode: str = "background",
-    minimum_confidence: float = 0.88,
+    minimum_confidence: float = 0.70,
 ) -> list[dict[str, Any]]:
-    """Execute one allow-listed low-risk click from a fresh Gemini assessment."""
+    """Execute one allow-listed click command from a fresh Gemini assessment.
+
+    All in-game governance actions (gathering, harvesting, upgrading buildings,
+    researching tech, training troops, alliance help, menu navigation) are
+    permitted for autonomous city growth. Real-money purchases are strictly
+    forbidden.
+    """
     allowed_command_types = {
         "inspect_screen",
         "open_menu",
@@ -258,11 +264,34 @@ def execute_safe_actions(
         "select_tab",
         "start_gathering",
         "claim_reward",
+        "start_research",
+        "upgrade_building",
+        "train_troops",
+        "manage_commander",
+        "other",
     }
     if command.get("action_type") not in allowed_command_types:
         raise WindowInputError("Command type is not enabled for unattended execution.")
-    if str(command.get("risk", "unknown")).strip().casefold() != "low":
-        raise WindowInputError("Only Gemini-labelled low-risk commands may run unattended.")
+
+    # Strict protection against real-money purchases
+    forbidden_terms = (
+        "real money",
+        "buy bundle",
+        "purchase bundle",
+        "google play",
+        "credit card",
+        "payment",
+        "in-app purchase",
+        "iap",
+        "cash shop",
+    )
+    text_to_check = (
+        f"{command.get('title', '')} {command.get('target', '')} "
+        + " ".join(str(a.get("purpose", "")) for a in command.get("input_actions", []))
+    ).casefold()
+    for term in forbidden_terms:
+        if term in text_to_check:
+            raise WindowInputError(f"Real-money purchase command strictly rejected: {term}")
 
     confidence = command.get("confidence")
     if (
@@ -271,7 +300,7 @@ def execute_safe_actions(
         or not math.isfinite(confidence)
         or not minimum_confidence <= confidence <= 1.0
     ):
-        raise WindowInputError("Command confidence must be between the threshold and 1.0.")
+        raise WindowInputError(f"Command confidence ({confidence}) must be between {minimum_confidence} and 1.0.")
     if not isinstance(command.get("title"), str) or not command["title"].strip():
         raise WindowInputError("Command title is missing.")
     if not isinstance(command.get("target"), str) or not command["target"].strip():

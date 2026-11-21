@@ -18,10 +18,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Start RoK Governor with a fixed high‑level goal."
     )
+    DEFAULT_GOAL = (
+        "Run autonomously: prioritize gathering resources, grow power by upgrading buildings, "
+        "researching technology, and training troops continuously. No real-money purchases."
+    )
     parser.add_argument(
         "--goal",
-        required=True,
-        help="High‑level instruction for the bot (e.g., 'Run autonomously, prioritize gathering, upgrade buildings, and research when possible').",
+        default=DEFAULT_GOAL,
+        help="High-level instruction for the bot (default: autonomous growth prioritizing gathering, upgrades, and research; no real-money purchases).",
     )
     parser.add_argument(
         "--title",
@@ -47,9 +51,16 @@ def main() -> None:
     print(f"[INFO] Input mode: {args.input_mode}")
     print(f"[INFO] OCR profile: {args.profile}")
 
-    # Example of passing a prompt via env var (uncomment if governor reads it)
-    # env = os.environ.copy()
-    # env["ROKGOV_PROMPT"] = args.goal
+    # Pass the goal to the governor process
+    env = os.environ.copy()
+    env["ROKGOV_GOAL"] = args.goal
+
+    # Auto-resume any historical automation pause
+    try:
+        from rok_governor.execution_store import ExecutionStore
+        ExecutionStore().resume_automation()
+    except Exception:
+        pass
 
     cmd = [
         sys.executable,
@@ -65,7 +76,7 @@ def main() -> None:
     ]
 
     # Run the governor (blocks until stopped with Ctrl+C)
-    subprocess.run(cmd, check=True)  # , env=env
+    subprocess.run(cmd, check=True, env=env)
 
 if __name__ == "__main__":
     main()

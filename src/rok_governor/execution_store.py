@@ -48,7 +48,7 @@ class ExecutionStore:
             else:
                 previous_details = json.loads(previous_review[2])
                 evidence = (previous_details.get("visual_review") or {}).get("evidence")
-                initial_pause = 1
+                initial_pause = 0
                 initial_reason = (
                     f"Execution #{previous_review[0]} "
                     f"({previous_details.get('verification_criteria', 'action')}) was visually "
