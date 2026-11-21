@@ -98,20 +98,21 @@ def _prune_screenshots(directory: str | Path, keep: int = 200) -> None:
 def run_smart_monitor(
     *,
     title: str = "万国覚醒",
-    sample_interval: float = 1.0,
+    sample_interval: float = 0.8,
     change_threshold: float = 0.025,
-    stable_frames: int = 2,
-    heartbeat: float = 30.0,
+    stable_frames: int = 1,
+    heartbeat: float = 15.0,
     duration: int = 0,
     profile: str = "pc",
     database: str = "data/account_history.sqlite3",
     screenshot_dir: str = "screenshots",
     output_dir: str = "observations",
     gemini_enabled: bool = False,
-    gemini_interval: float = 180.0,
+    gemini_interval: float = 12.0,
     gemini_model: str | None = None,
     automation_enabled: bool = True,
     input_mode: str = "background",
+    fast: bool = True,
 ) -> int:
     """Observe the game continuously; OCR is supporting evidence, Gemini is independent.
 
@@ -192,38 +193,43 @@ def run_smart_monitor(
                 should_analyse = changed or heartbeat_due
 
                 if should_analyse:
-                    try:
-                        screenshot = save_window_image(frame, screenshot_dir)
-                        observation = analyse_image(screenshot, profile=profile)
-                        observation["source"] = str(screenshot)
-                        observation["monitor"] = {
-                            "mode": "smart",
-                            "change_ratio": round(ratio, 5),
-                            "trigger": "visual_change" if changed else "heartbeat",
-                        }
-                        observation_id = store.record(observation)
-                        output = save_observation(observation, output_dir)
-                        observation_number += 1
-                        latest_observation = observation
-                        last_ocr_at = datetime.now(timezone.utc).isoformat()
-                        runtime_error = None
-                        keep_screenshot = True
-                        print(
-                            f"Observation #{observation_id}: "
-                            f"screen={observation.get('screen', {}).get('type', 'unknown')} "
-                            f"trigger={observation['monitor']['trigger']} "
-                            f"change={ratio:.1%} review={observation.get('review_required')} "
-                            f"json={output}",
-                            flush=True,
-                        )
-                    except Exception as exc:
-                        runtime_error = f"Local OCR {type(exc).__name__}: {exc}"
-                        print(
-                            f"Local OCR unavailable ({type(exc).__name__}: {exc}); "
-                            "Gemini will continue using screenshot pixels.",
-                            flush=True,
-                        )
-                    finally:
+                    if not fast:
+                        try:
+                            screenshot = save_window_image(frame, screenshot_dir)
+                            observation = analyse_image(screenshot, profile=profile)
+                            observation["source"] = str(screenshot)
+                            observation["monitor"] = {
+                                "mode": "smart",
+                                "change_ratio": round(ratio, 5),
+                                "trigger": "visual_change" if changed else "heartbeat",
+                            }
+                            observation_id = store.record(observation)
+                            output = save_observation(observation, output_dir)
+                            observation_number += 1
+                            latest_observation = observation
+                            last_ocr_at = datetime.now(timezone.utc).isoformat()
+                            runtime_error = None
+                            keep_screenshot = True
+                            print(
+                                f"Observation #{observation_id}: "
+                                f"screen={observation.get('screen', {}).get('type', 'unknown')} "
+                                f"trigger={observation['monitor']['trigger']} "
+                                f"change={ratio:.1%} review={observation.get('review_required')} "
+                                f"json={output}",
+                                flush=True,
+                            )
+                        except Exception as exc:
+                            runtime_error = f"Local OCR {type(exc).__name__}: {exc}"
+                            print(
+                                f"Local OCR unavailable ({type(exc).__name__}: {exc}); "
+                                "Gemini will continue using screenshot pixels.",
+                                flush=True,
+                            )
+                        finally:
+                            last_ocr = time.monotonic()
+                            changed_streak = 0
+                    else:
+                        # Fast mode: skip CPU-heavy EasyOCR and let Gemini Vision interpret pixels directly
                         last_ocr = time.monotonic()
                         changed_streak = 0
 
@@ -289,6 +295,7 @@ def run_smart_monitor(
                             candidate_commands = (
                                 (advice.get("advice") or {}).get("commands") or []
                             )
+                        sent_action = False
                         for proposed in candidate_commands:
                             if not proposed.get("input_actions"):
                                 continue
@@ -297,13 +304,13 @@ def run_smart_monitor(
 
                             # Gemini may take several seconds to answer. Re-capture
                             # immediately before dispatch and reject stale coordinates
-                            # if the game screen changed materially in the meantime.
+                            # if the game screen changed materially in the meantime (>15% to allow ambient animations).
                             try:
                                 fresh_frame = adb_screencap() if input_mode == "adb" else capture_window_image(title)
                                 freshness_change = _change_ratio(
                                     signature, _frame_signature(fresh_frame)
                                 )
-                                if freshness_change > 0.02:
+                                if freshness_change > 0.15:
                                     print(
                                         f"Automation skipped '{proposed.get('title')}': "
                                         f"screen changed {freshness_change:.1%} while Gemini was thinking.",
@@ -329,6 +336,7 @@ def run_smart_monitor(
                                 sent = execute_safe_actions(
                                     title, execution_command, input_mode=input_mode
                                 )
+                                sent_action = True
                                 execution_store.finish(
                                     execution_command, "posted",
                                     {"input_results": sent, "decision_screenshot": str(screenshot),
@@ -406,7 +414,7 @@ def run_smart_monitor(
                         gemini_failures = 0
                         last_gemini_at = datetime.now(timezone.utc).isoformat()
                         runtime_error = None
-                        next_gemini_at = time.monotonic() + gemini_interval
+                        next_gemini_at = time.monotonic() + (2.5 if sent_action else gemini_interval)
                     except Exception as exc:
                         gemini_failures += 1
                         delay = min(
@@ -447,21 +455,22 @@ def run_smart_monitor(
 def run_resilient_monitor(
     *,
     title: str = "万国覚醒",
-    sample_interval: float = 2.0,
+    sample_interval: float = 0.8,
     change_threshold: float = 0.025,
-    stable_frames: int = 2,
-    heartbeat: float = 30.0,
+    stable_frames: int = 1,
+    heartbeat: float = 15.0,
     duration: int = 0,
     profile: str = "pc",
     database: str = "data/account_history.sqlite3",
     screenshot_dir: str = "screenshots",
     output_dir: str = "observations",
-    gemini_interval: float = 180.0,
+    gemini_interval: float = 12.0,
     gemini_model: str | None = None,
-    retry_delay: float = 5.0,
-    max_retry_delay: float = 60.0,
+    retry_delay: float = 3.0,
+    max_retry_delay: float = 30.0,
     automation_enabled: bool = True,
     input_mode: str = "background",
+    fast: bool = True,
 ) -> int:
     """Run the Gemini governor and recover from transient failures.
 
@@ -512,6 +521,7 @@ def run_resilient_monitor(
                 gemini_model=gemini_model,
                 automation_enabled=automation_enabled,
                 input_mode=input_mode,
+                fast=fast,
             )
             return 0
         except KeyboardInterrupt:
@@ -531,6 +541,7 @@ def run_resilient_monitor(
                 observation_count=previous_health.get("observations_this_session", 0),
                 automation_enabled=automation_enabled,
                 input_mode=input_mode,
+                fast=fast,
             )
             print("\\nGovernor stopped by user.", flush=True)
             return 0
@@ -553,6 +564,7 @@ def run_resilient_monitor(
                 observation_count=previous_health.get("observations_this_session", 0),
                 automation_enabled=automation_enabled,
                 input_mode=input_mode,
+                fast=fast,
             )
             print(
                 f"Monitor cycle failed ({type(exc).__name__}: {exc}). "

@@ -125,11 +125,13 @@ def build_parser() -> argparse.ArgumentParser:
         "run", help="Run the resilient Gemini-powered background governor."
     )
     run_parser.add_argument("--title", default="万国覚醒")
-    run_parser.add_argument("--sample-interval", type=float, default=2.0)
+    run_parser.add_argument("--sample-interval", type=float, default=0.8)
     run_parser.add_argument("--change-threshold", type=float, default=0.025)
-    run_parser.add_argument("--stable-frames", type=int, default=2)
-    run_parser.add_argument("--heartbeat", type=float, default=30.0)
-    run_parser.add_argument("--gemini-interval", type=float, default=180.0)
+    run_parser.add_argument("--stable-frames", type=int, default=1)
+    run_parser.add_argument("--heartbeat", type=float, default=15.0)
+    run_parser.add_argument("--gemini-interval", type=float, default=12.0)
+    run_parser.add_argument("--fast", action=argparse.BooleanOptionalAction, default=True,
+                            help="Skip local CPU EasyOCR and rely on Gemini vision directly (much faster).")
     run_parser.add_argument("--duration", type=int, default=0,
                             help="Stop after this many seconds; 0 runs until Ctrl+C.")
     run_parser.add_argument("--profile", choices=("bluestacks", "pc"), default="pc")
@@ -551,6 +553,7 @@ def main() -> int:
             gemini_model=args.gemini_model,
             automation_enabled=not args.observe_only,
             input_mode=args.input_mode,
+            fast=getattr(args, "fast", True),
         )
         return 0
 
@@ -574,6 +577,7 @@ def main() -> int:
             max_retry_delay=args.max_retry_delay,
             automation_enabled=not args.observe_only,
             input_mode=args.input_mode,
+            fast=getattr(args, "fast", True),
         )
 
     if args.command == "analyze":
