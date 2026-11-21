@@ -20,7 +20,8 @@ def main() -> None:
     )
     DEFAULT_GOAL = (
         "Run autonomously in this order: send available marches to gather resources, train troops, "
-        "upgrade buildings, then research technology. No real-money purchases."
+        "upgrade buildings, then research technology. Do not play Expedition or any event "
+        "except Path of Vengeance. No real-money purchases."
     )
     parser.add_argument(
         "--goal",

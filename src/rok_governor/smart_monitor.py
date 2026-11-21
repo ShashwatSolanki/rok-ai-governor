@@ -297,6 +297,7 @@ def run_smart_monitor(
                             and not pending_verification_before_cycle
                             and automation_pause is None
                         ) else []
+                        from .action_policy import event_action_rejection
                         if automation_enabled and pending_verification_before_cycle:
                             print(
                                 "No new input this cycle: Gemini is assessing the previous click first.",
@@ -312,6 +313,15 @@ def run_smart_monitor(
                             )
                         sent_action = False
                         for proposed in candidate_commands:
+                            event_rejection = event_action_rejection(
+                                proposed, advice.get("advice") or {}
+                            )
+                            if event_rejection:
+                                print(
+                                    f"Automation skipped '{proposed.get('title', 'untitled command')}': "
+                                    f"{event_rejection}", flush=True,
+                                )
+                                continue
                             if not proposed.get("input_actions"):
                                 continue
                             if not proposed.get("preconditions") or not proposed.get("verification"):

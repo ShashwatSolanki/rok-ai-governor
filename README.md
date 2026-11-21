@@ -70,6 +70,8 @@ OPENROUTER_MODEL=openrouter/free
 
 Fallback providers receive the screenshot and prompt, so they provide resilience but also send game screenshots to those services. Free-tier limits and model availability can change; separate keys under one provider may still share the same project or organization quota.
 
+The governor's event policy blocks Expedition and other event actions. **Path of Vengeance is the only event allowed.** When another event screen is open, the governor may use a clearly visible exit or return-to-city control.
+
 ## Usage
 
 The `run` and `monitor` commands keep the newest 50 window/desktop screenshots in the screenshot directory and delete older captures. Change the cap with `--screenshot-retention`, for example `--screenshot-retention 25`.
