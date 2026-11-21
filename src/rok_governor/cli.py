@@ -117,7 +117,7 @@ def build_parser() -> argparse.ArgumentParser:
     smart_parser.add_argument("--gemini-model", default=None)
     smart_parser.add_argument("--observe-only", action="store_true", help="Disable all game input; monitor and advise only.")
     smart_parser.add_argument(
-        "--input-mode", choices=("background", "foreground"), default="background",
+        "--input-mode", choices=("background", "foreground", "adb"), default="background",
         help="Input delivery. Foreground mode focuses the game and moves the mouse.",
     )
 
@@ -141,7 +141,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--max-retry-delay", type=float, default=60.0)
     run_parser.add_argument("--observe-only", action="store_true", help="Disable all game input; monitor and advise only.")
     run_parser.add_argument(
-        "--input-mode", choices=("background", "foreground"), default="background",
+        "--input-mode", choices=("background", "foreground", "adb"), default="background",
         help="Input delivery. Foreground mode focuses the game and moves the mouse.",
     )
 

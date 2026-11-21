@@ -73,7 +73,7 @@ def post_click(
         if (not isinstance(screenshot_size, tuple) or len(screenshot_size) != 2
                 or any(type(value) is not int or value <= 0 for value in screenshot_size)):
             raise WindowInputError(f"Invalid screenshot geometry: {screenshot_size!r}")
-    if input_mode not in {"background", "foreground"}:
+    if input_mode not in {"background", "foreground", "adb"}:
         raise WindowInputError("Input mode must be 'background' or 'foreground'.")
     if not math.isfinite(hold_seconds) or not 0.04 <= hold_seconds <= 0.2:
         raise WindowInputError("Click hold duration is outside the permitted range.")
@@ -101,7 +101,10 @@ def post_click(
     if not win32gui.IsWindow(hwnd) or not win32gui.IsWindowVisible(hwnd):
         raise WindowInputError("Target game window is no longer available.")
 
-    window_class = target.get("class_name") or win32gui.GetClassName(hwnd)
+    try:
+        window_class = target.get("class_name") or win32gui.GetClassName(hwnd)
+    except Exception:
+        window_class = target.get("class_name")
     if input_mode == "background" and window_class == "UnityWndClass":
         raise WindowInputError(
             "Background click withheld: this native Unity window uses a Raw Input "
@@ -160,6 +163,14 @@ def post_click(
                 except Exception as exc:
                     raise WindowInputError(f"Could not release the background mouse button: {exc}") from exc
         delivery = "posted_to_window_not_foregrounded"
+    elif input_mode == "adb":
+        # Use ADB to tap the absolute screen coordinates.
+        # The variables screen_x and screen_y have already been computed
+        # (the absolute pixel location on the monitor).  We simply invoke
+        # the helper that wraps `adb shell input tap`.
+        from .adb_input import adb_tap
+        adb_tap(screen_x, screen_y)
+        delivery = "adb_tap"
     else:
         virtual_left = win32api.GetSystemMetrics(76)  # SM_XVIRTUALSCREEN
         virtual_top = win32api.GetSystemMetrics(77)  # SM_YVIRTUALSCREEN

@@ -6,11 +6,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import easyocr
+# Attempt to import easyocr; if unavailable, provide a fallback that raises when used.
+try:
+    import easyocr  # type: ignore
+except ImportError:  # pragma: no cover
+    easyocr = None  # Placeholder; will raise if OCR functions are called without the library.
+
 import numpy as np
 from PIL import Image
 
-_reader: easyocr.Reader | None = None
+# Reader instance, lazily created when needed.
+_reader: Any = None
 
 # Normalised coordinates for the BlueStacks 5 city layout. Coordinates are
 # fractions of the full screenshot so the regions scale with window size.
@@ -46,7 +52,9 @@ OCR_PROFILES = {"bluestacks": BLUESTACKS_REGIONS, "pc": PC_REGIONS}
 REVIEW_CONFIDENCE = 0.75
 
 
-def _get_reader() -> easyocr.Reader:
+def _get_reader() -> "easyocr.Reader":
+    if easyocr is None:
+        raise ImportError("easyocr library is required for OCR functionality. Please install it via 'pip install easyocr'.")
     global _reader
     if _reader is None:
         # CPU mode keeps setup predictable across machines.
