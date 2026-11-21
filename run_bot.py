@@ -2,7 +2,7 @@
 """Wrapper to start the RoK Governor with a fixed high‑level goal.
 
 Defaults:
-- title: "Rise Of Kingdoms Bot Deve..."
+- title: "LDPlayer"
 - input_mode: "adb"
 - profile: "bluestacks"
 
@@ -19,8 +19,8 @@ def main() -> None:
         description="Start RoK Governor with a fixed high‑level goal."
     )
     DEFAULT_GOAL = (
-        "Run autonomously: prioritize gathering resources, grow power by upgrading buildings, "
-        "researching technology, and training troops continuously. No real-money purchases."
+        "Run autonomously in this order: send available marches to gather resources, train troops, "
+        "upgrade buildings, then research technology. No real-money purchases."
     )
     parser.add_argument(
         "--goal",
@@ -29,8 +29,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--title",
-        default="Rise Of Kingdoms Bot Deve...",
-        help="Exact window title as reported by `python -m rok_governor windows`.",
+        default="LDPlayer",
+        help="Window title substring as reported by `python -m rok_governor windows`.",
     )
     parser.add_argument(
         "--input-mode",

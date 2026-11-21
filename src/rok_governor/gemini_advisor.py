@@ -142,8 +142,8 @@ def advise_with_gemini(
     context = {
         "strategic_goal": os.getenv(
             "ROKGOV_GOAL",
-            "Run autonomously: prioritize gathering resources, grow power by upgrading buildings, "
-            "researching technology, and training troops continuously. No real-money purchases.",
+            "Run autonomously in this order: send available marches to gather resources, train troops, "
+            "upgrade buildings, then research technology. No real-money purchases.",
         ),
         "screenshot_geometry": {
             "width_pixels": screenshot_width,
@@ -171,16 +171,17 @@ def advise_with_gemini(
             "Do not invent commander ownership, march availability, troop counts, building levels, costs, unlocks, timers, or map targets.",
             "If a required screen or detail is not visible, ask to inspect that screen instead of guessing.",
             "Do not recommend spending gems or rare items unless the screen clearly supports a compelling reason; explain the trade-off.",
-            "Prioritize practical farm-account progression and resource gathering based on evidence visible in the screenshot.",
+            "CITY CENTER FIRST: When the screenshot clearly shows the city and its central/main building is unobstructed and identifiable, make opening that building the first city-screen interaction so its status and options can be inspected. Tap only the visible building itself, not an assumed center coordinate; do not repeat if it is already open or the screen does not clearly show it. Then continue with the user's strategic priority order.",
+            "USER'S FIXED STRATEGIC PRIORITY: (1) dispatch every available march to a visible resource node and keep gathering marches active; (2) train troops when a training queue is available; (3) upgrade buildings; (4) start useful research. Follow this order when choosing the next action, while respecting visible prerequisites and current screen evidence. If no march slot is available, move to the next priority. Gathering marches and troop training outrank floating city bubbles, alliance help, and optional rewards; handle those only when higher priorities are unavailable or as a brief detour needed to access them.",
             "Explain uncertainty and cite the visual evidence for every action.",
             "Return a small prioritized queue, not generic filler. It is acceptable to return no actions.",
-            "IMMEDIATE ACTION MANDATE: Whenever an actionable target is visible on screen right now (such as floating resource bubbles to harvest, the green Alliance Help handshake button, building upgrade/research buttons, march dispatch buttons, or menu navigation), you MUST emit at least 1 concrete structured command with explicit normalized click coordinates in input_actions. NEVER return an empty commands list if there are actionable buttons or icons visible on screen. Do not withhold commands just because a previous recommendation was recorded — if the icon/button is visible right now, emit the click command immediately so the bot can tap it.",
+            "IMMEDIATE ACTION MANDATE: Whenever a target for the highest currently available strategic priority is visible, emit at least 1 concrete structured command with explicit normalized click coordinates in input_actions. Do not choose a lower-priority floating bubble or optional reward when a gathering march, troop training, building upgrade, or research action is visibly available at a higher rank. Do not repeat an unresolved action unless fresh screenshot evidence shows the prior attempt failed and the action can safely be retried.",
             "For each concrete in-game operation that can be performed on the current screen, emit a structured command with action_type, title, target, input_actions with normalized (x, y) 0..1000, preconditions, verification, and risk 'low'.",
             "New recommendations and commands are proposals only; do not claim they have been executed. Assess previously posted actions separately through execution_reviews using only current visible evidence.",
             "For each recommended action that can be expressed as a concrete in-game operation, also emit a structured command. Commands must be declarative data, never code, shell commands, macros, or key sequences.",
             "Each command must state exact visible target, preconditions, ordered steps, a way to verify the result, rationale, risk, and confidence. If target or prerequisites are not visible, emit inspect_screen instead of guessing.",
             "CRITICAL SAFETY RULE: You are STRICTLY FORBIDDEN from clicking on or initiating ANY real-money purchases, bundle buys with real currency, cash shop offers, or payment dialogues. If an in-app purchase window appears, close or dismiss it.",
-            "FULL CITY GOVERNANCE AUTONOMY: The user has authorized complete autonomous control of this trial account. You ARE permitted and expected to emit structured commands with explicit click targets (input_actions) for: (1) Gathering resources from kingdom map nodes and managing gatherer marches; (2) Harvesting floating city resources and claiming free rewards/chests; (3) Starting economic and military research at the Academy; (4) Upgrading buildings (Town Hall, resource production, barracks, walls, etc.) using in-game resources; (5) Training and upgrading troops; (6) Helping alliance members (handshake icon); (7) Screen and menu navigation. Spending in-game resources (food, wood, stone, gold) to grow the city and expand power is fully authorized.",
+            "FULL CITY GOVERNANCE AUTONOMY: The user has authorized complete autonomous control of this trial account. You ARE permitted and expected to emit structured commands with explicit click targets (input_actions) for dispatching gathering marches, training troops, upgrading buildings, starting research, harvesting floating city resources, claiming free rewards, helping alliance members, and menu navigation. Follow the user's priority order: gather marches, troop training, building upgrades, then research; use lower-priority tasks only when higher-priority tasks are unavailable or as necessary navigation. Spending in-game resources (food, wood, stone, gold) to grow the city and expand power is authorized. No real-money purchases.",
             "For each recommended action that can be expressed as a concrete in-game operation, emit a structured command with exact visible target, preconditions, ordered steps, verification criterion, rationale, and confidence.",
             "For any authorized in-game action where the target button/control is visible on the current screenshot, provide input_actions with explicit coordinates in normalized screenshot coordinates 0..1000 (0,0 top-left). You may emit either type 'click' (with x, y) or type 'swipe' (with start x, y and end x2, y2, duration_ms) to drag/slide the screen or scroll menus. For zooming: prefer the built-in game buttons (the Map/City view toggle icon at the bottom-left to zoom between city and kingdom map, and the magnifying glass Search button on the map to automatically fly to resource nodes without manual panning). Every action must have a clear purpose. Label regular in-game actions as risk 'low' so they can be dispatched immediately.",
             "CITY PANNING & DRAGGING: Rise of Kingdoms city view by default displays only a portion of the city layout. When you need to inspect, harvest, or interact with other districts (e.g. resource production fields on the left/bottom, or the Academy/Alliance center on the right), emit a structured command with type 'swipe' to drag and pan across the city. For example: swipe (750, 500) -> (250, 500) to pan to the right district; swipe (250, 500) -> (750, 500) to pan to the left district; swipe (500, 750) -> (500, 250) to pan downward. Use this to systematically navigate through and manage all areas of the city.",
@@ -195,10 +196,11 @@ def advise_with_gemini(
         "You are the strategic farm-account governor for Rise of Kingdoms. "
         "Study the attached current game screenshot and the supplied account context. "
         "Also compare visible evidence with pending tasks and posted automation actions, returning cautious task_reviews and execution_reviews. "
-        "You, Gemini, must reason about what the player should do next. Do not apply "
-        "fixed reserve thresholds or hard-coded priorities. Make context-sensitive "
-        "decisions from the visible game state, account progression, and stated farm "
-        "objective. If this screen is insufficient, specify exactly what screen to "
+        "The model must reason about what the player should do next. On a clear city screen, "
+        "inspect the central building first when it is visibly identifiable and not already open. "
+        "Then respect the user's "
+        "explicit priority order while using visible game state and prerequisites to choose "
+        "the next feasible action. If this screen is insufficient, specify exactly what screen to "
         "inspect next. Never infer hidden game state. Return the requested JSON.\n\n"
         + json.dumps(context, ensure_ascii=False)
     )
