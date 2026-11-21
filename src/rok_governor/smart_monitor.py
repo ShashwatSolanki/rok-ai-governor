@@ -20,6 +20,7 @@ from .window_capture import (
     capture_window_image,
     save_window_image,
 )
+from .adb_input import adb_screencap
 
 
 def _frame_signature(frame: str | Path | Image.Image) -> np.ndarray:
@@ -58,7 +59,11 @@ def _write_runtime_status(
 ) -> Path:
     """Atomically publish a small health snapshot beside the local database."""
     path = Path(database).with_name("runtime_status.json")
-    path.parent.mkdir(parents=True, exist_ok=True)
+    runtime_dir = path.parent
+    if runtime_dir.is_file():
+        # A stray file named "data" blocks directory creation – delete it.
+        runtime_dir.unlink()
+    runtime_dir.mkdir(parents=True, exist_ok=True)
     payload = {
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "state": state,
@@ -124,8 +129,8 @@ def run_smart_monitor(
         raise ValueError("--heartbeat must be >= --sample-interval.")
     if gemini_interval <= 0:
         raise ValueError("--gemini-interval must be positive.")
-    if input_mode not in {"background", "foreground"}:
-        raise ValueError("--input-mode must be 'background' or 'foreground'.")
+    if input_mode not in {"background", "foreground", "adb"}:
+        raise ValueError("--input-mode must be 'background', 'foreground', or 'adb'.")
 
     store = AccountStore(database)
     started = time.monotonic()
@@ -160,7 +165,7 @@ def run_smart_monitor(
         # authorized action; observe-only runs remain genuinely read-only.
         while True:
             loop_started = time.monotonic()
-            frame = capture_window_image(title)
+            frame = adb_screencap() if input_mode == "adb" else capture_window_image(title)
             last_capture_at = datetime.now(timezone.utc).isoformat()
             _write_runtime_status(database, state="running", title=title, started_at=session_started_at, last_capture_at=last_capture_at, last_ocr_at=last_ocr_at, last_gemini_at=last_gemini_at, last_error=runtime_error, observation_count=observation_number, automation_enabled=automation_enabled and gemini_enabled, input_mode=input_mode)
             screenshot: Path | None = None
@@ -289,7 +294,7 @@ def run_smart_monitor(
                             # immediately before dispatch and reject stale coordinates
                             # if the game screen changed materially in the meantime.
                             try:
-                                fresh_frame = capture_window_image(title)
+                                fresh_frame = adb_screencap() if input_mode == "adb" else capture_window_image(title)
                                 freshness_change = _change_ratio(
                                     signature, _frame_signature(fresh_frame)
                                 )
@@ -328,7 +333,10 @@ def run_smart_monitor(
                                 )
                                 time.sleep(1.2)
                                 try:
-                                    verification_frame = capture_window(title, screenshot_dir)
+                                    if input_mode == "adb":
+                                        verification_frame = save_window_image(adb_screencap(), screenshot_dir)
+                                    else:
+                                        verification_frame = capture_window(title, screenshot_dir)
                                     execution_store.finish(
                                         execution_command, "posted",
                                         {"input_results": sent, "decision_screenshot": str(screenshot),
@@ -458,8 +466,8 @@ def run_resilient_monitor(
     """
     if retry_delay <= 0 or max_retry_delay < retry_delay:
         raise ValueError("Retry delays must be positive and max_retry_delay >= retry_delay.")
-    if input_mode not in {"background", "foreground"}:
-        raise ValueError("--input-mode must be 'background' or 'foreground'.")
+    if input_mode not in {"background", "foreground", "adb"}:
+        raise ValueError("--input-mode must be 'background', 'foreground', or 'adb'.")
     from dotenv import load_dotenv
 
     load_dotenv()
