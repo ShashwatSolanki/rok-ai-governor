@@ -271,9 +271,28 @@ def run_smart_monitor(
                         execution_store = ExecutionStore(database)
                         execution_reviews_saved = execution_store.record_reviews(advice)
                         automation_pause = execution_store.automation_pause()
-                        candidate_commands = (
-                            (advice.get("advice") or {}).get("commands") or []
-                        ) if (
+                        raw_commands = list((advice.get("advice") or {}).get("commands") or [])
+                        if not raw_commands:
+                            import re
+                            for rec in (advice.get("advice") or {}).get("recommended_actions") or []:
+                                text = f"{rec.get('visual_evidence', '')} {rec.get('why', '')} {' '.join(rec.get('manual_steps', []))}"
+                                match = re.search(r"\((\d{1,4}),\s*(\d{1,4})\)", text)
+                                if match:
+                                    cx, cy = int(match.group(1)), int(match.group(2))
+                                    if 0 <= cx <= 1000 and 0 <= cy <= 1000:
+                                        raw_commands.append({
+                                            "action_type": "claim_reward",
+                                            "title": rec.get("action", "Recommended action"),
+                                            "target": rec.get("action", "Visible control"),
+                                            "input_actions": [{"type": "click", "x": cx, "y": cy, "purpose": rec.get("action", "Click visible control")}],
+                                            "preconditions": ["Target is visible on screen"],
+                                            "verification": f"Action {rec.get('action')} executed",
+                                            "risk": "low",
+                                            "confidence": rec.get("confidence", 0.95),
+                                        })
+                                        break
+
+                        candidate_commands = raw_commands if (
                             automation_enabled
                             and not pending_verification_before_cycle
                             and automation_pause is None
@@ -292,9 +311,7 @@ def run_smart_monitor(
                             )
                             execution_store.resume_automation()
                             automation_pause = None
-                            candidate_commands = (
-                                (advice.get("advice") or {}).get("commands") or []
-                            )
+                            candidate_commands = raw_commands
                         sent_action = False
                         for proposed in candidate_commands:
                             if not proposed.get("input_actions"):
