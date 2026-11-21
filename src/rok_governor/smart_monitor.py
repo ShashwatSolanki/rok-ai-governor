@@ -245,7 +245,10 @@ def run_smart_monitor(
                         pending_verification_before_cycle = bool(
                             ExecutionStore(database).pending_verification()
                         )
-                        print("Requesting Gemini strategy assessment...", flush=True)
+                        print(
+                            f"Requesting strategy assessment with fresh capture: {screenshot.name}",
+                            flush=True,
+                        )
                         advice = advise_with_gemini(
                             screenshot,
                             profile=profile,
@@ -305,9 +308,11 @@ def run_smart_monitor(
                             )
                         elif automation_enabled and automation_pause:
                             print(
-                                "Previous visual assessment was unsuccessful/uncertain: "
+                                "Automation remains paused from a previous visual assessment "
+                                "(this reason is stored until manually resumed): "
                                 f"{automation_pause['reason']}. "
-                                "Automation remains paused. Inspect the game, then run "
+                                "No click will be sent. This cycle used the fresh capture shown above. "
+                                "Inspect the game, then run "
                                 "'python -m rok_governor automation-resume' to resume clicks.",
                                 flush=True,
                             )
