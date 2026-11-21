@@ -164,12 +164,10 @@ def post_click(
                     raise WindowInputError(f"Could not release the background mouse button: {exc}") from exc
         delivery = "posted_to_window_not_foregrounded"
     elif input_mode == "adb":
-        # Use ADB to tap the absolute screen coordinates.
-        # The variables screen_x and screen_y have already been computed
-        # (the absolute pixel location on the monitor).  We simply invoke
-        # the helper that wraps `adb shell input tap`.
+        # For ADB, tap coordinates are inside the Android device display space
+        # (matching the captured screenshot resolution), not Windows monitor pixels.
         from .adb_input import adb_tap
-        adb_tap(screen_x, screen_y)
+        adb_tap(screenshot_x, screenshot_y)
         delivery = "adb_tap"
     else:
         virtual_left = win32api.GetSystemMetrics(76)  # SM_XVIRTUALSCREEN
