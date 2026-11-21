@@ -5,13 +5,10 @@ observations. It never interacts with the game client.
 """
 
 import json
-import os
 from pathlib import Path
 from typing import Any
 
-from dotenv import load_dotenv
-from google import genai
-from google.genai import types
+from .gemini_profiles import generate_with_profiles, load_candidate_profiles, request_profile
 
 # Keep the model configurable: availability and service load can change.
 DEFAULT_MODEL = "gemini-2.5-flash"
@@ -103,13 +100,7 @@ def analyse_with_gemini(
     model: str | None = None,
 ) -> dict[str, Any]:
     """Interpret a screenshot with Gemini and return schema-constrained JSON."""
-    load_dotenv()
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise RuntimeError(
-            "GEMINI_API_KEY is not set. Add it to a local .env file; "
-            "see .env.example. Gemini is optional, so omit --gemini for local OCR only."
-        )
+    profiles = load_candidate_profiles(model_override=model, default_model=DEFAULT_MODEL)
 
     path = Path(image_path)
     if not path.is_file():
@@ -158,26 +149,12 @@ def analyse_with_gemini(
     with path.open("rb") as image_file:
         image_bytes = image_file.read()
 
-    selected_model = model or os.getenv("GEMINI_MODEL", DEFAULT_MODEL)
-    client = genai.Client(
-        api_key=api_key,
-        http_options=types.HttpOptions(
-            timeout=GEMINI_TIMEOUT_MS,
-            retry_options=types.HttpRetryOptions(attempts=1),
-        ),
-    )
-    response = client.models.generate_content(
-        model=selected_model,
-        contents=[
-            prompt,
-            types.Part.from_bytes(data=image_bytes, mime_type="image/png"),
-        ],
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema=VISION_SCHEMA,
-            temperature=0.1,
-        ),
-    )
+    def request(profile):
+        return request_profile(profile, prompt, image_bytes, schema=VISION_SCHEMA,
+                               temperature=0.1, timeout_ms=GEMINI_TIMEOUT_MS)
+
+    used_profile, response = generate_with_profiles(profiles, request)
+    selected_model = used_profile.model
 
     if not response.text:
         raise RuntimeError("Gemini returned an empty response.")
@@ -187,8 +164,9 @@ def analyse_with_gemini(
         raise RuntimeError("Gemini returned invalid JSON despite structured output.") from exc
 
     return {
-        "provider": "Google Gemini",
+        "provider": used_profile.provider,
         "model": selected_model,
+        "credential_profile": used_profile.name,
         "analysis": result,
         "note": (
             "Gemini output is a visual interpretation, not verified account data. "

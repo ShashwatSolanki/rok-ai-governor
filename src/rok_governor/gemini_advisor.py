@@ -12,14 +12,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from dotenv import load_dotenv
-from google import genai
-from google.genai import types
 from PIL import Image
 
 from .account_store import AccountStore
 from .task_store import TaskStore
 from .gemini_vision import DEFAULT_MODEL
+from .gemini_profiles import generate_with_profiles, load_candidate_profiles, request_profile
 
 ADVICE_SCHEMA = {
     "type": "OBJECT",
@@ -105,10 +103,7 @@ def advise_with_gemini(
     model: str | None = None,
 ) -> dict[str, Any]:
     """Ask Gemini to interpret the current game screen and choose next actions."""
-    load_dotenv()
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise RuntimeError("GEMINI_API_KEY is not set in .env.")
+    profiles = load_candidate_profiles(model_override=model, default_model=DEFAULT_MODEL)
     path = Path(image_path)
     if not path.is_file():
         raise FileNotFoundError(path)
@@ -210,51 +205,12 @@ def advise_with_gemini(
 
     with path.open("rb") as image_file:
         image_bytes = image_file.read()
-    primary_model = model or os.getenv("GEMINI_MODEL", DEFAULT_MODEL)
-    candidate_models = [primary_model]
-    for alt in ("gemini-2.5-flash", "gemini-3.5-flash-lite"):
-        if alt not in candidate_models:
-            candidate_models.append(alt)
+    def request(profile):
+        return request_profile(profile, prompt, image_bytes, schema=ADVICE_SCHEMA,
+                               temperature=0.2, timeout_ms=120_000)
 
-    client = genai.Client(
-        api_key=api_key,
-        http_options=types.HttpOptions(
-            api_version="v1beta",
-            timeout=120_000,
-            retry_options=types.HttpRetryOptions(attempts=2),
-        ),
-    )
-
-    response = None
-    used_model = primary_model
-    last_exc: Exception | None = None
-
-    for m in candidate_models:
-        try:
-            response = client.models.generate_content(
-                model=m,
-                contents=[
-                    prompt,
-                    types.Part.from_bytes(data=image_bytes, mime_type="image/png"),
-                ],
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=ADVICE_SCHEMA,
-                    temperature=0.2,
-                ),
-            )
-            used_model = m
-            break
-        except Exception as exc:
-            last_exc = exc
-            err_str = str(exc)
-            if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "404" in err_str:
-                print(f"[WARN] Model {m} unavailable ({exc}); trying fallback model...", flush=True)
-                continue
-            raise
-
-    if response is None:
-        raise RuntimeError(f"All candidate models exhausted: {last_exc}") from last_exc
+    used_profile, response = generate_with_profiles(profiles, request)
+    used_model = used_profile.model
 
     if not response.text:
         raise RuntimeError(f"Gemini ({used_model}) returned an empty farm-advice response.")
@@ -265,8 +221,9 @@ def advise_with_gemini(
 
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "provider": "Google Gemini",
+        "provider": used_profile.provider,
         "model": used_model,
+        "credential_profile": used_profile.name,
         "mode": "gemini_strategy",
         "source_screenshot": str(path),
         "advice": advice,

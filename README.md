@@ -42,9 +42,33 @@ pip install -e .
 3. Put your key in `.env` as the value of `GEMINI_API_KEY`.
 4. Keep `.env` private. It is ignored by Git; never paste your key into source code, chat, or GitHub.
 
-The default model is `gemini-3.6-flash`. You can override it by setting `GEMINI_MODEL` in `.env` or passing `--gemini-model` to the command. Model availability can depend on your Google AI Studio project.
+The default model is `gemini-2.5-flash`. You can override it by setting `GEMINI_MODEL` in `.env` or passing `--gemini-model` to the command. Model availability can depend on your Google AI Studio project.
+
+You can configure ordered API-key/model profiles in `.env`. On quota, authentication, or model availability errors, the governor tries the next configured profile without logging any key values:
+
+```dotenv
+GEMINI_API_KEY_1=your_first_key
+GEMINI_MODEL_1=gemini-2.5-flash
+GEMINI_API_KEY_2=your_second_key
+GEMINI_MODEL_2=gemini-3.5-flash-lite
+```
+
+Profiles are attempted in numeric order. `GEMINI_API_KEY` and `GEMINI_MODEL` remain supported as a legacy profile and fallback. `--gemini-model` overrides the first profile's model; other numbered profile models stay as configured. Optional `GEMINI_FALLBACK_MODELS` is a comma-separated model list tried with the first key after configured key/model profiles.
 
 Gemini requests send the selected screenshot and a small summary of local OCR output to Google's API. Use `--gemini` only when you want that external analysis and associated API usage. Local OCR remains available without Gemini.
+
+### Provider fallback
+
+Optional Groq and OpenRouter credentials can be added to `.env`. The advisor and visual review rotate through Gemini profiles, then Groq, then OpenRouter when a provider returns a quota, authentication, availability, or server error. Defaults are Groq `qwen/qwen3.8-27b` and OpenRouter `openrouter/free`; both need to accept image input and JSON output. You can set `GROQ_MODEL` or `OPENROUTER_MODEL` to another compatible model. Numbered keys (`GROQ_API_KEY_1`, `OPENROUTER_API_KEY_1`) and per-key model names are also supported.
+
+```dotenv
+GROQ_API_KEY=your_groq_api_key
+GROQ_MODEL=qwen/qwen3.8-27b
+OPENROUTER_API_KEY=your_openrouter_api_key
+OPENROUTER_MODEL=openrouter/free
+```
+
+Fallback providers receive the screenshot and prompt, so they provide resilience but also send game screenshots to those services. Free-tier limits and model availability can change; separate keys under one provider may still share the same project or organization quota.
 
 ## Usage
 

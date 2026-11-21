@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -499,11 +498,10 @@ def run_resilient_monitor(
         raise ValueError("Retry delays must be positive and max_retry_delay >= retry_delay.")
     if input_mode not in {"background", "foreground", "adb"}:
         raise ValueError("--input-mode must be 'background', 'foreground', or 'adb'.")
-    from dotenv import load_dotenv
+    from .gemini_profiles import load_candidate_profiles
+    from .gemini_vision import DEFAULT_MODEL
 
-    load_dotenv()
-    if not os.getenv("GEMINI_API_KEY"):
-        raise RuntimeError("GEMINI_API_KEY is missing. Add it to .env before starting the Gemini governor.")
+    load_candidate_profiles(default_model=DEFAULT_MODEL)
     started = time.monotonic()
     failures = 0
     print(

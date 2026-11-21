@@ -47,7 +47,7 @@ class ExecutionStoreTests(unittest.TestCase):
             self.assertTrue(ExecutionStore(database).resume_automation())
             self.assertIsNone(ExecutionStore(database).automation_pause())
 
-    def test_existing_failed_review_seeds_pause(self):
+    def test_existing_failed_review_does_not_override_current_control_state(self):
         with tempfile.TemporaryDirectory() as temporary:
             database = Path(temporary) / "history.sqlite3"
             with sqlite3.connect(database) as db:
@@ -61,8 +61,7 @@ class ExecutionStoreTests(unittest.TestCase):
             db.close()
 
             pause = ExecutionStore(database).automation_pause()
-            self.assertIn("Execution #7", pause["reason"])
-            self.assertIn("No screen change", pause["reason"])
+            self.assertIsNone(pause)
 
 
 class FrameCaptureTests(unittest.TestCase):
