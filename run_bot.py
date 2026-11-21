@@ -40,6 +40,12 @@ def main() -> None:
         help="OCR profile (bluestacks or pc).",
     )
     args = parser.parse_args()
+    # Show basic runtime info
+    print(f"[INFO] Starting RoK Governor wrapper")
+    print(f"[INFO] Goal: {args.goal}")
+    print(f"[INFO] Window title: {args.title}")
+    print(f"[INFO] Input mode: {args.input_mode}")
+    print(f"[INFO] OCR profile: {args.profile}")
 
     # Example of passing a prompt via env var (uncomment if governor reads it)
     # env = os.environ.copy()
