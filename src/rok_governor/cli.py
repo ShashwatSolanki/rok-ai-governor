@@ -130,7 +130,10 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--change-threshold", type=float, default=0.025)
     run_parser.add_argument("--stable-frames", type=int, default=1)
     run_parser.add_argument("--heartbeat", type=float, default=15.0)
-    run_parser.add_argument("--gemini-interval", type=float, default=12.0)
+    run_parser.add_argument(
+        "--gemini-interval", type=float, default=60.0,
+        help="Minimum seconds between Gemini requests (default: 60).",
+    )
     run_parser.add_argument("--fast", action=argparse.BooleanOptionalAction, default=True,
                             help="Skip local CPU EasyOCR and rely on Gemini vision directly (much faster).")
     run_parser.add_argument("--duration", type=int, default=0,
