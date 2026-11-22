@@ -1,7 +1,44 @@
 import io
 import subprocess
+import time
 
 from PIL import Image
+
+
+_ADB_DISCONNECTED_MARKERS = (
+    "device offline",
+    "device not found",
+    "no devices/emulators found",
+)
+
+
+def _run_adb(command: list[str], *, timeout: float) -> subprocess.CompletedProcess:
+    """Run an ADB command, reconnect offline emulator transports once, retry."""
+    try:
+        return subprocess.run(command, capture_output=True, check=True, timeout=timeout)
+    except subprocess.CalledProcessError as exc:
+        details = (exc.stderr or b"").decode(errors="replace").casefold()
+        if not any(marker in details for marker in _ADB_DISCONNECTED_MARKERS):
+            raise
+
+        try:
+            subprocess.run(
+                ["adb", "reconnect", "offline"],
+                capture_output=True,
+                check=False,
+                timeout=5,
+            )
+            time.sleep(1)
+            return subprocess.run(command, capture_output=True, check=True, timeout=timeout)
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as retry_exc:
+            retry_details = getattr(retry_exc, "stderr", b"") or b""
+            if isinstance(retry_details, bytes):
+                retry_details = retry_details.decode(errors="replace")
+            raise RuntimeError(
+                "ADB emulator is disconnected; one reconnect attempt failed. "
+                "Confirm LDPlayer is running and `adb devices -l` shows its device as online. "
+                f"Details: {str(retry_details).strip() or retry_exc}"
+            ) from retry_exc
 
 
 def adb_tap(x: int, y: int) -> None:
@@ -13,7 +50,7 @@ def adb_tap(x: int, y: int) -> None:
     """
     # Use the `adb` executable that should be on PATH.
     # The command is equivalent to: adb shell input tap <x> <y>
-    subprocess.run(["adb", "shell", "input", "tap", str(x), str(y)], check=True)
+    _run_adb(["adb", "shell", "input", "tap", str(x), str(y)], timeout=15)
 
 
 def adb_swipe(x1: int, y1: int, x2: int, y2: int, duration_ms: int = 400) -> None:
@@ -24,9 +61,9 @@ def adb_swipe(x1: int, y1: int, x2: int, y2: int, duration_ms: int = 400) -> Non
         x2, y2: End pixel coordinates on the Android screen.
         duration_ms: Duration of the swipe motion in milliseconds.
     """
-    subprocess.run(
+    _run_adb(
         ["adb", "shell", "input", "swipe", str(x1), str(y1), str(x2), str(y2), str(duration_ms)],
-        check=True,
+        timeout=20,
     )
 
 
@@ -41,12 +78,7 @@ def adb_screencap() -> Image.Image:
         RuntimeError: If the ADB ``screencap`` command fails.
     """
     try:
-        result = subprocess.run(
-            ["adb", "exec-out", "screencap", "-p"],
-            capture_output=True,
-            check=True,
-            timeout=10,
-        )
+        result = _run_adb(["adb", "exec-out", "screencap", "-p"], timeout=10)
     except subprocess.CalledProcessError as exc:
         raise RuntimeError(
             f"ADB screencap failed (exit {exc.returncode}): {exc.stderr.decode(errors='replace')}"

@@ -73,6 +73,12 @@ class ActionPolicyTests(unittest.TestCase):
         self.assertEqual(action_priority(safe_dismiss, advice), -2)
         self.assertIsNone(action_priority(listed_building, advice))
 
+        layout_advice = {"current_screen": "Cityscape layout selection cards"}
+        self.assertIsNone(action_priority(
+            {"action_type": "start_gathering", "title": "Send march to gather"},
+            layout_advice,
+        ))
+
 
 if __name__ == "__main__":
     unittest.main()
