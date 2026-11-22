@@ -166,7 +166,7 @@ def request_profile(profile: GeminiProfile, prompt: str, image_bytes: bytes, *, 
     return type("ProviderResponse", (), {"text": payload["choices"][0]["message"]["content"]})()
 
 
-def _prepare_provider_image(image_bytes: bytes, *, max_bytes: int = 3 * 1024 * 1024) -> bytes:
+def _prepare_provider_image(image_bytes: bytes, *, max_bytes: int = 96 * 1024) -> bytes:
     """Convert screenshots to a compact JPEG below provider request limits."""
     from PIL import Image
 
@@ -179,8 +179,11 @@ def _prepare_provider_image(image_bytes: bytes, *, max_bytes: int = 3 * 1024 * 1
         result = output.getvalue()
         if len(result) <= max_bytes:
             return result
-    while image.width > 960 or image.height > 960:
-        image.thumbnail((int(image.width * 0.8), int(image.height * 0.8)), Image.Resampling.LANCZOS)
+    while len(result) > max_bytes and max(image.size) > 320:
+        image = image.resize(
+            (max(1, int(image.width * 0.8)), max(1, int(image.height * 0.8))),
+            Image.Resampling.LANCZOS,
+        )
         output = BytesIO()
         image.save(output, format="JPEG", quality=64, optimize=True)
         result = output.getvalue()

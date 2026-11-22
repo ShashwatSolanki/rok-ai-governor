@@ -142,6 +142,15 @@ class GeminiProfileTests(unittest.TestCase):
             self.assertEqual(prepared.format, "JPEG")
             self.assertEqual(prepared.size, (300, 180))
 
+    def test_provider_image_respects_small_payload_cap(self):
+        image = Image.effect_noise((1600, 900), 100).convert("RGB")
+        source = BytesIO()
+        image.save(source, format="PNG")
+
+        compressed = _prepare_provider_image(source.getvalue())
+
+        self.assertLessEqual(len(compressed), 96 * 1024)
+
 
 if __name__ == "__main__":
     unittest.main()
