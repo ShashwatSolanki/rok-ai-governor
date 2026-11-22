@@ -27,6 +27,10 @@ _CITY_MENU = re.compile(r"\b(?:city\s*escape|cityscape|building selection)\b.{0,
 _EMPTY_GROUND = re.compile(r"\b(empty|blank|unoccupied|clear)\b.{0,35}\b(ground|area|space|part|spot)\b|\b(ground|area|space|part|spot)\b.{0,35}\b(empty|blank|unoccupied|clear)\b", re.I)
 _CENTER_BUILDING = re.compile(r"\b(city center|city centre|central building|main building|building in the middle|middle building)\b", re.I)
 _CITY_SCREEN = re.compile(r"\b(city|cityscape|city view)\b", re.I)
+_MAP_SCREEN = re.compile(r"\b(kingdom map|world map|map screen)\b", re.I)
+_RESOURCE_NODE_OPTION = re.compile(
+    r"\b(food|wood|stone|gold)\s+(?:deposit|resource node|node)\b", re.I
+)
 _ENTER_CITY = re.compile(r"\benter (?:internal )?(?:city )?governance\b", re.I)
 _AP_AVAILABLE = re.compile(
     r"\b(?:AP|action points?)\b\s*(?:(?:is|:|=)\s*)?[1-9]\d*(?:\s*/\s*[1-9]\d*)?|"
@@ -115,6 +119,10 @@ def action_priority(command: dict[str, Any], advice: dict[str, Any] | None = Non
         return 4
     if action_type in {"open_menu", "select_tab", "inspect_screen", "other"}:
         if _EXIT_TERMS.search(text):
+            return 0
+        if _MAP_SCREEN.search(screen_text) and _RESOURCE_NODE_OPTION.search(text):
+            # Choosing a resource type from the map carousel is navigation
+            # directly toward the highest-priority gathering task.
             return 0
         # A navigation command must identify which authorized task it supports.
         if re.search(r"\b(map|march|gather|resource node)\b", low):

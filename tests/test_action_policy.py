@@ -46,6 +46,17 @@ class ActionPolicyTests(unittest.TestCase):
         self.assertEqual(action_priority({"action_type": "open_menu", "title": "Open map to gather"}), 0)
         self.assertEqual(action_priority({"action_type": "select_tab", "title": "Open quests tab"}), 5)
         self.assertIsNone(action_priority({"action_type": "open_menu", "title": "Open VIP menu"}))
+        self.assertEqual(
+            action_priority(
+                {
+                    "action_type": "open_menu",
+                    "title": "Select Stone Deposit",
+                    "target": "Stone Deposit icon in the bottom carousel",
+                },
+                {"current_screen": "Kingdom Map search modal overlay"},
+            ),
+            0,
+        )
 
     def test_city_center_preparation_sorts_before_task_actions(self):
         advice = {"current_screen": "city"}
