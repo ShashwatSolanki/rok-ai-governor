@@ -105,7 +105,7 @@ def run_smart_monitor(
     screenshot_retention: int = 50,
     output_dir: str = "observations",
     gemini_enabled: bool = False,
-    gemini_interval: float = 60.0,
+    gemini_interval: float = 12.0,
     gemini_model: str | None = None,
     automation_enabled: bool = True,
     input_mode: str = "background",
@@ -470,16 +470,14 @@ def run_smart_monitor(
                         gemini_failures = 0
                         last_gemini_at = datetime.now(timezone.utc).isoformat()
                         runtime_error = None
-                        # Keep a real minimum between all provider requests,
-                        # including the visual review after a dispatched click.
-                        next_gemini_at = time.monotonic() + gemini_interval
+                        next_gemini_at = time.monotonic() + (2.5 if sent_action else gemini_interval)
                     except Exception as exc:
                         gemini_failures += 1
                         delay = min(
                             gemini_max_retry_delay,
                             gemini_retry_delay * (2 ** min(gemini_failures - 1, 6)),
                         )
-                        next_gemini_at = time.monotonic() + max(delay, gemini_interval)
+                        next_gemini_at = time.monotonic() + delay
                         runtime_error = f"Gemini {type(exc).__name__}: {exc}"
                         _write_runtime_status(database, state="degraded", title=title, started_at=session_started_at, last_capture_at=last_capture_at, last_ocr_at=last_ocr_at, last_gemini_at=last_gemini_at, last_error=runtime_error, consecutive_failures=gemini_failures, observation_count=observation_number, automation_enabled=automation_enabled and gemini_enabled, input_mode=input_mode)
                         print(
@@ -523,7 +521,7 @@ def run_resilient_monitor(
     screenshot_dir: str = "screenshots",
     screenshot_retention: int = 50,
     output_dir: str = "observations",
-    gemini_interval: float = 60.0,
+    gemini_interval: float = 12.0,
     gemini_model: str | None = None,
     retry_delay: float = 3.0,
     max_retry_delay: float = 30.0,
