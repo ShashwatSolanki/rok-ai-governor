@@ -58,6 +58,19 @@ class ActionPolicyTests(unittest.TestCase):
         self.assertEqual(action_priority(center, advice), -1)
         self.assertEqual(order_task_commands([gather, center], advice), [center, gather])
 
+    def test_city_hall_enter_popup_is_allowed_as_navigation(self):
+        advice = {
+            "current_screen": (
+                "City exterior with City Hall selected and its white details popup open"
+            )
+        }
+        command = {
+            "action_type": "claim_reward",
+            "title": "Enter Internal City Governance",
+            "target": "Blue ENTER button on City Hall popup",
+        }
+        self.assertEqual(action_priority(command, advice), -1)
+
     def test_city_escape_menu_only_allows_dismissal_on_empty_ground(self):
         advice = {"current_screen": "City Escape menu"}
         safe_dismiss = {

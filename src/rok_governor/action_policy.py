@@ -27,6 +27,7 @@ _CITY_MENU = re.compile(r"\b(?:city\s*escape|cityscape|building selection)\b.{0,
 _EMPTY_GROUND = re.compile(r"\b(empty|blank|unoccupied|clear)\b.{0,35}\b(ground|area|space|part|spot)\b|\b(ground|area|space|part|spot)\b.{0,35}\b(empty|blank|unoccupied|clear)\b", re.I)
 _CENTER_BUILDING = re.compile(r"\b(city center|city centre|central building|main building|building in the middle|middle building)\b", re.I)
 _CITY_SCREEN = re.compile(r"\b(city|cityscape|city view)\b", re.I)
+_ENTER_CITY = re.compile(r"\benter (?:internal )?(?:city )?governance\b", re.I)
 _AP_AVAILABLE = re.compile(
     r"\b(?:AP|action points?)\b\s*(?:(?:is|:|=)\s*)?[1-9]\d*(?:\s*/\s*[1-9]\d*)?|"
     r"\b(?:AP|action points?)\b\s+(?:available|remaining|left|positive|sufficient)\b(?!\s*[:=]?\s*0\b)|"
@@ -69,6 +70,16 @@ def action_priority(command: dict[str, Any], advice: dict[str, Any] | None = Non
         return None
 
     in_city = bool(_CITY_SCREEN.search(screen_text))
+    if (
+        in_city
+        and _ENTER_CITY.search(text)
+        and re.search(r"\bcity hall\b", screen_text, re.I)
+        and re.search(r"\bpopup\b", screen_text, re.I)
+    ):
+        # The central-building popup uses a generic reward action type for its
+        # ENTER button; allow this specific navigation into the city interior.
+        return -1
+
     if in_city and _CENTER_BUILDING.search(text) and action_type in {
         "open_menu", "inspect_screen", "other"
     }:
