@@ -42,12 +42,12 @@ pip install -e .
 3. Paste each key into a numbered `GEMINI_API_KEY_1` through `GEMINI_API_KEY_10` entry. Set the one model in `GEMINI_MODEL`.
 4. Keep `.env` private. It is ignored by Git; never paste your key into source code, chat, or GitHub.
 
-The default model is `gemini-3.5-flash-lite`, a low-latency, cost-efficient model that supports computer use. You can override it by setting `GEMINI_MODEL` in `.env` or passing `--gemini-model` to the command. Model availability can depend on your Google AI Studio project. [Supported models](https://ai.google.dev/gemini-api/docs/generate-content/computer-use#model-versions).
+The default model is `gemini-3.8-flash`, Google's recommended Gemini model for computer use. You can override it by setting `GEMINI_MODEL` in `.env` or passing `--gemini-model` to the command. Model availability can depend on your Google AI Studio project. [Supported models](https://ai.google.dev/gemini-api/docs/generate-content/computer-use#model-versions).
 
 Configure one Gemini model and up to 10 Gemini API keys in `.env`. On quota, authentication, or model availability errors, the governor tries the next key in numeric order; every key uses the same model:
 
 ```dotenv
-GEMINI_MODEL=gemini-3.5-flash-lite
+GEMINI_MODEL=gemini-3.8-flash
 GEMINI_API_KEY_1=your_first_key
 GEMINI_API_KEY_2=your_second_key
 # GEMINI_API_KEY_3=your_third_key
