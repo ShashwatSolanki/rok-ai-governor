@@ -113,7 +113,10 @@ def advise_with_gemini(
 
     account_history = AccountStore(database).latest_state()
     task_store = TaskStore(database)
-    pending_tasks = task_store.list("pending")
+    # Keep the multimodal request bounded. Long-running sessions can accumulate
+    # hundreds of pending tasks; sending all of them twice bloats provider bodies
+    # and causes HTTP 413 errors. TaskStore remains complete locally.
+    pending_tasks = task_store.list("pending")[:20]
     recent_task_history = task_store.list("all")[:40]
     review_context = [
         {
@@ -137,7 +140,7 @@ def advise_with_gemini(
             "seen_count": command["seen_count"],
             "last_seen": command["last_seen"],
         }
-        for command in pending_commands[:30]
+        for command in pending_commands[:20]
     ]
     context = {
         "strategic_goal": os.getenv(
