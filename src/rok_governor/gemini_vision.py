@@ -11,7 +11,7 @@ from typing import Any
 from .gemini_profiles import generate_with_profiles, load_candidate_profiles, request_profile
 
 # Keep the model configurable: availability and service load can change.
-DEFAULT_MODEL = "gemini-2.5-flash"
+DEFAULT_MODEL = "gemini-3.8-flash"
 GEMINI_TIMEOUT_MS = 45_000
 
 COMMANDER_SCHEMA = {
