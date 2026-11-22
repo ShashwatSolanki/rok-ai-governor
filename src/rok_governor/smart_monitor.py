@@ -320,12 +320,16 @@ def run_smart_monitor(
                             )
                             execution_store.resume_automation()
                             automation_pause = None
-                            candidate_commands = order_task_commands(raw_commands)
+                            candidate_commands = order_task_commands(
+                                raw_commands, advice.get("advice") or {}
+                            )
                         else:
-                            candidate_commands = order_task_commands(candidate_commands)
+                            candidate_commands = order_task_commands(
+                                candidate_commands, advice.get("advice") or {}
+                            )
                         sent_action = False
                         for proposed in candidate_commands:
-                            if action_priority(proposed) is None:
+                            if action_priority(proposed, advice.get("advice") or {}) is None:
                                 print(
                                     f"Automation skipped '{proposed.get('title', 'untitled command')}': "
                                     "it is outside the six authorized task priorities.",

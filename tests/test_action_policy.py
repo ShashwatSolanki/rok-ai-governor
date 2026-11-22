@@ -47,6 +47,32 @@ class ActionPolicyTests(unittest.TestCase):
         self.assertEqual(action_priority({"action_type": "select_tab", "title": "Open quests tab"}), 5)
         self.assertIsNone(action_priority({"action_type": "open_menu", "title": "Open VIP menu"}))
 
+    def test_city_center_preparation_sorts_before_task_actions(self):
+        advice = {"current_screen": "city"}
+        center = {
+            "action_type": "open_menu",
+            "title": "Inspect central building",
+            "target": "Central building",
+        }
+        gather = {"action_type": "start_gathering", "title": "Send march to gather"}
+        self.assertEqual(action_priority(center, advice), -1)
+        self.assertEqual(order_task_commands([gather, center], advice), [center, gather])
+
+    def test_city_escape_menu_only_allows_dismissal_on_empty_ground(self):
+        advice = {"current_screen": "City Escape menu"}
+        safe_dismiss = {
+            "action_type": "other",
+            "title": "Dismiss City Escape menu",
+            "target": "Empty ground area outside the building list",
+        }
+        listed_building = {
+            "action_type": "open_menu",
+            "title": "Open listed building",
+            "target": "Building list",
+        }
+        self.assertEqual(action_priority(safe_dismiss, advice), -2)
+        self.assertIsNone(action_priority(listed_building, advice))
+
 
 if __name__ == "__main__":
     unittest.main()
