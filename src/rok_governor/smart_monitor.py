@@ -13,7 +13,6 @@ import numpy as np
 from PIL import Image
 
 from .account_store import AccountStore
-from .ocr import analyse_image, save_observation
 from .window_capture import (
     capture_window,
     capture_window_image,
@@ -194,6 +193,10 @@ def run_smart_monitor(
 
                 if should_analyse:
                     if not fast:
+                        # EasyOCR imports PyTorch and can consume substantial RAM.
+                        # Load it only when local OCR is explicitly enabled.
+                        from .ocr import analyse_image, save_observation
+
                         try:
                             screenshot = save_window_image(frame, screenshot_dir)
                             observation = analyse_image(screenshot, profile=profile)

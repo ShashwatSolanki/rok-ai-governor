@@ -94,46 +94,6 @@ ADVICE_SCHEMA = {
 }
 
 
-def _compact_provider_prompt(context: dict[str, Any]) -> str:
-    """Build a smaller prompt for providers with stricter HTTP body limits."""
-    tasks = []
-    for task in context.get("pending_tasks_to_verify", [])[:6]:
-        tasks.append({
-            "task_id": task.get("task_id"),
-            "action": str(task.get("action") or "")[:160],
-            "visual_evidence": str(task.get("visual_evidence_when_created") or "")[:180],
-            "manual_steps": [str(step)[:100] for step in task.get("manual_steps", [])[:3]],
-        })
-    compact_context = {
-        "strategic_goal": context.get("strategic_goal"),
-        "screenshot_geometry": context.get("screenshot_geometry"),
-        "known_account_state": context.get("known_account_state"),
-        "pending_tasks_to_verify": tasks,
-        "posted_actions_to_visually_verify": context.get("posted_actions_to_visually_verify", [])[:3],
-        "pending_commands": [
-            {key: command.get(key) for key in ("action_type", "title", "target")}
-            for command in context.get("existing_pending_commands", [])[:6]
-        ],
-        "local_ocr_hints": {
-            key: (context.get("latest_local_ocr") or {}).get(key)
-            for key in ("profile", "screen", "account_state", "quest_text", "timer_text")
-            if key in (context.get("latest_local_ocr") or {})
-        },
-    }
-    rules = (
-        "Analyze the current screenshot; OCR/account history are secondary hints. "
-        "Priorities: open the clearly identifiable central city building first when applicable, "
-        "then gather with marches, train troops, upgrade buildings, and research. "
-        "Never do Expedition or other events except Path of Vengeance. No purchases. "
-        "Use only visible evidence; never invent targets or IDs. Return only JSON matching the supplied schema. "
-        "Review only supplied task/execution IDs; mark uncertain when current pixels cannot verify an outcome. "
-        "Commands need visible normalized click coordinates, preconditions, and verification."
-    )
-    return rules + "\nContext:\n" + json.dumps(
-        compact_context, ensure_ascii=False, separators=(",", ":")
-    )
-
-
 def advise_with_gemini(
     image_path: str | Path,
     *,
@@ -254,8 +214,7 @@ def advise_with_gemini(
     with path.open("rb") as image_file:
         image_bytes = image_file.read()
     def request(profile):
-        selected_prompt = prompt if profile.provider == "Google Gemini" else _compact_provider_prompt(context)
-        return request_profile(profile, selected_prompt, image_bytes, schema=ADVICE_SCHEMA,
+        return request_profile(profile, prompt, image_bytes, schema=ADVICE_SCHEMA,
                                temperature=0.2, timeout_ms=120_000)
 
     used_profile, response = generate_with_profiles(profiles, request)

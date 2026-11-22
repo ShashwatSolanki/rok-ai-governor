@@ -37,38 +37,28 @@ pip install -e .
 
 ## Optional Gemini setup
 
-1. Create an API key in [Google AI Studio](https://aistudio.google.com/app/apikey).
+1. Create Gemini API keys in [Google AI Studio](https://aistudio.google.com/app/apikey). For independent quotas, use separate Google projects; multiple keys in the same project share its quota.
 2. Copy `.env.example` to `.env`.
-3. Put your key in `.env` as the value of `GEMINI_API_KEY`.
+3. Paste each key into a numbered `GEMINI_API_KEY_1` through `GEMINI_API_KEY_10` entry. Set the one model in `GEMINI_MODEL`.
 4. Keep `.env` private. It is ignored by Git; never paste your key into source code, chat, or GitHub.
 
 The default model is `gemini-2.5-flash`. You can override it by setting `GEMINI_MODEL` in `.env` or passing `--gemini-model` to the command. Model availability can depend on your Google AI Studio project.
 
-You can configure ordered API-key/model profiles in `.env`. On quota, authentication, or model availability errors, the governor tries the next configured profile without logging any key values:
+Configure one Gemini model and up to 10 Gemini API keys in `.env`. On quota, authentication, or model availability errors, the governor tries the next key in numeric order; every key uses the same model:
 
 ```dotenv
+GEMINI_MODEL=gemini-2.5-flash
 GEMINI_API_KEY_1=your_first_key
-GEMINI_MODEL_1=gemini-2.5-flash
 GEMINI_API_KEY_2=your_second_key
-GEMINI_MODEL_2=gemini-3.5-flash-lite
+# GEMINI_API_KEY_3=your_third_key
+# ...continue through GEMINI_API_KEY_10
 ```
 
-Profiles are attempted in numeric order. `GEMINI_API_KEY` and `GEMINI_MODEL` remain supported as a legacy profile and fallback. `--gemini-model` overrides the first profile's model; other numbered profile models stay as configured. Optional `GEMINI_FALLBACK_MODELS` is a comma-separated model list tried with the first key after configured key/model profiles.
+`GEMINI_API_KEY` remains supported as a legacy key and is tried after numbered keys. `--gemini-model` overrides the single model for all keys. Do not add `GEMINI_MODEL_1` or model fallback lists; this setup intentionally uses one model only.
 
 Gemini requests send the selected screenshot and a small summary of local OCR output to Google's API. Use `--gemini` only when you want that external analysis and associated API usage. Local OCR remains available without Gemini.
 
-### Provider fallback
-
-Optional Groq and OpenRouter credentials can be added to `.env`. The advisor and visual review rotate through Gemini profiles, then Groq, then OpenRouter when a provider returns a quota, authentication, availability, or server error. Defaults are Groq `qwen/qwen3.8-27b` and OpenRouter `openrouter/free`; both need to accept image input and JSON output. You can set `GROQ_MODEL` or `OPENROUTER_MODEL` to another compatible model. Numbered keys (`GROQ_API_KEY_1`, `OPENROUTER_API_KEY_1`) and per-key model names are also supported.
-
-```dotenv
-GROQ_API_KEY=your_groq_api_key
-GROQ_MODEL=qwen/qwen3.8-27b
-OPENROUTER_API_KEY=your_openrouter_api_key
-OPENROUTER_MODEL=openrouter/free
-```
-
-Fallback providers receive the screenshot and prompt, so they provide resilience but also send game screenshots to those services. Free-tier limits and model availability can change; separate keys under one provider may still share the same project or organization quota.
+All configured keys are Google Gemini keys; no other AI providers are used. Gemini rate limits are project-based, not per key, so keys from the same Google AI Studio project share quota. Use keys from separate projects if you need independent project quotas, and follow Google's terms and quotas. [Gemini rate limits](https://ai.google.dev/gemini-api/docs/rate-limits).
 
 The governor's event policy blocks Expedition and other event actions. **Path of Vengeance is the only event allowed.** When another event screen is open, the governor may use a clearly visible exit or return-to-city control.
 

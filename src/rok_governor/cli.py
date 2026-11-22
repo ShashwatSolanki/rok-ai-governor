@@ -8,7 +8,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .capture import capture_primary_monitor
-from .ocr import analyse_image, save_observation
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -297,6 +296,8 @@ def main() -> int:
         if args.fast:
             print("Fast mode: skipping local EasyOCR; Gemini will inspect the screenshot directly.", flush=True)
         else:
+            from .ocr import analyse_image
+
             try:
                 print("Running local OCR as supporting evidence...", flush=True)
                 local_observation = analyse_image(screenshot, profile=args.profile)
@@ -504,6 +505,7 @@ def main() -> int:
 
     if args.command == "watch":
         from .account_store import AccountStore
+        from .ocr import analyse_image, save_observation
         from .window_capture import capture_window
 
         if args.interval < 5:
@@ -587,6 +589,8 @@ def main() -> int:
         )
 
     if args.command == "analyze":
+        from .ocr import analyse_image, save_observation
+
         print(f"[1/3] Loading screenshot: {args.image}", flush=True)
         if not args.image.is_file():
             raise FileNotFoundError(f"Screenshot not found: {args.image}")

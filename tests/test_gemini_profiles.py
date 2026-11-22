@@ -1,9 +1,6 @@
 import os
 import unittest
-from io import BytesIO
 from unittest.mock import patch
-
-from PIL import Image
 
 from rok_governor.gemini_profiles import (
     GeminiProfile,
@@ -11,7 +8,6 @@ from rok_governor.gemini_profiles import (
     generate_with_profiles,
     load_candidate_profiles,
     load_gemini_profiles,
-    _prepare_provider_image,
 )
 
 
@@ -21,7 +17,7 @@ class GeminiProfileTests(unittest.TestCase):
         self.dotenv.start()
         self.addCleanup(self.dotenv.stop)
 
-    def test_numbered_keys_keep_their_models_and_rotate_in_numeric_order(self):
+    def test_numbered_keys_share_one_model_and_rotate_in_numeric_order(self):
         values = {
             "GEMINI_API_KEY_3": "secret-three",
             "GEMINI_MODEL_3": "model-three",
@@ -37,14 +33,14 @@ class GeminiProfileTests(unittest.TestCase):
         self.assertEqual(
             [(p.name, p.model, p.api_key) for p in profiles],
             [
-                ("GEMINI_API_KEY_1", "model-one", "secret-one"),
-                ("GEMINI_API_KEY_2", "model-two", "secret-two"),
-                ("GEMINI_API_KEY_3", "model-three", "secret-three"),
+                ("GEMINI_API_KEY_1", "model-default", "secret-one"),
+                ("GEMINI_API_KEY_2", "model-default", "secret-two"),
+                ("GEMINI_API_KEY_3", "model-default", "secret-three"),
             ],
         )
         self.assertNotIn("secret-one", repr(profiles[0]))
 
-    def test_override_changes_only_primary_and_legacy_key_remains_supported(self):
+    def test_override_applies_to_every_key_and_legacy_key_remains_supported(self):
         values = {
             "GEMINI_API_KEY": "legacy-secret",
             "GEMINI_MODEL": "configured-model",
@@ -57,7 +53,7 @@ class GeminiProfileTests(unittest.TestCase):
             )
 
         self.assertEqual(profiles[0].model, "cli-model")
-        self.assertEqual(profiles[1].model, "configured-model")
+        self.assertEqual(profiles[1].model, "cli-model")
 
     def test_placeholder_keys_are_ignored(self):
         with patch.dict(
@@ -65,7 +61,7 @@ class GeminiProfileTests(unittest.TestCase):
             {"GEMINI_API_KEY": "your_gemini_api_key_here", "GEMINI_MODEL": "m"},
             clear=True,
         ):
-            with self.assertRaisesRegex(RuntimeError, "No AI API key"):
+            with self.assertRaisesRegex(RuntimeError, "No Gemini API key"):
                 load_gemini_profiles(default_model="m")
 
     def test_quota_failure_rotates_and_redacts_secret(self):
@@ -114,42 +110,21 @@ class GeminiProfileTests(unittest.TestCase):
         self.assertIn("key one/model one", str(raised.exception))
         self.assertNotIn("private-key", str(raised.exception))
 
-    def test_model_fallbacks_follow_configured_profiles(self):
-        values = {
-            "GEMINI_API_KEY_1": "secret-one",
-            "GEMINI_MODEL_1": "model-one",
-            "GEMINI_API_KEY_2": "secret-two",
-            "GEMINI_MODEL_2": "gemini-2.5-flash",
-        }
+    def test_only_gemini_keys_are_loaded_and_numbered_keys_are_unbounded_by_two(self):
+        values = {f"GEMINI_API_KEY_{index}": f"secret-{index}" for index in range(1, 11)}
+        values.update({
+            "GEMINI_MODEL": "one-model",
+            "GEMINI_MODEL_1": "ignored-model",
+            "GROQ_API_KEY": "groq-secret",
+            "OPENROUTER_API_KEY": "openrouter-secret",
+        })
         with patch.dict(os.environ, values, clear=True):
             profiles = load_candidate_profiles(default_model="default-model")
 
-        self.assertEqual(profiles[0].model, "model-one")
-        self.assertEqual(profiles[1].model, "gemini-2.5-flash")
-        self.assertEqual(profiles[2].model, "gemini-2.5-flash")
-        self.assertEqual(profiles[2].api_key, "secret-one")
-        self.assertEqual(profiles[3].model, "gemini-3.5-flash-lite")
-
-    def test_provider_image_is_reencoded_as_jpeg(self):
-        image = Image.new("RGBA", (300, 180), (40, 100, 180, 255))
-        source = BytesIO()
-        image.save(source, format="PNG")
-
-        compressed = _prepare_provider_image(source.getvalue())
-
-        self.assertTrue(compressed.startswith(b"\xff\xd8"))
-        with Image.open(BytesIO(compressed)) as prepared:
-            self.assertEqual(prepared.format, "JPEG")
-            self.assertEqual(prepared.size, (300, 180))
-
-    def test_provider_image_respects_small_payload_cap(self):
-        image = Image.effect_noise((1600, 900), 100).convert("RGB")
-        source = BytesIO()
-        image.save(source, format="PNG")
-
-        compressed = _prepare_provider_image(source.getvalue())
-
-        self.assertLessEqual(len(compressed), 64 * 1024)
+        self.assertEqual(len(profiles), 10)
+        self.assertEqual({profile.model for profile in profiles}, {"one-model"})
+        self.assertEqual(profiles[0].name, "GEMINI_API_KEY_1")
+        self.assertEqual(profiles[-1].name, "GEMINI_API_KEY_10")
 
 
 if __name__ == "__main__":
