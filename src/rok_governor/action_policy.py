@@ -1,37 +1,101 @@
-"""Local allow/deny rules for event-related game actions."""
+"""Deterministic allow-list and priority order for unattended game actions."""
 from __future__ import annotations
 
 import re
 from typing import Any
 
-_EVENT_TERMS = re.compile(r"\b(event|expedition|battle|battlefield|arena)\b", re.IGNORECASE)
+TASK_ORDER = (
+    "gathering",
+    "training",
+    "building_upgrade",
+    "research",
+    "city_resources",
+    "quests",
+)
+
+_EVENT_TERMS = re.compile(r"\b(event|expedition|battle|battlefield|arena|path of vengeance)\b", re.I)
 _EVENT_SCREEN = re.compile(
     r"\b(expedition|event\s+(?:center|screen|menu|interface|page|tab)|"
-    r"(?:center|screen|menu|interface|page|tab)\s+(?:of\s+)?events)\b",
-    re.IGNORECASE,
+    r"(?:center|screen|menu|interface|page|tab)\s+(?:of\s+)?events)\b", re.I
 )
-_PATH_OF_VENGEANCE = re.compile(r"\bpath\s+of\s+vengeance\b", re.IGNORECASE)
-_EXIT_TERMS = re.compile(r"\b(back|close|exit|home|city|map|return)\b", re.IGNORECASE)
+_EXIT_TERMS = re.compile(r"\b(back|close|exit|home|return|dismiss)\b", re.I)
+_RESOURCE_TERMS = re.compile(r"\b(resource|resources|bubble|harvest|collect|food|wood|stone|gold)\b", re.I)
+_QUEST_TERMS = re.compile(r"\b(quest|quests|mission|missions|objective|objectives)\b", re.I)
+
+
+def _text(command: dict[str, Any]) -> str:
+    return " ".join(
+        str(command.get(key) or "")
+        for key in ("title", "target", "action_type")
+    )
+
+
+def action_priority(command: dict[str, Any]) -> int | None:
+    """Return task rank (0 is highest); None means outside the user's task list.
+
+    Navigation is allowed only when its stated destination clearly serves one of
+    the six tasks, or when it exits an event screen.
+    """
+    action_type = str(command.get("action_type") or "").casefold()
+    text = _text(command)
+    low = text.casefold()
+    if _EVENT_TERMS.search(text):
+        if _EXIT_TERMS.search(text) and action_type in {
+            "open_menu", "inspect_screen", "select_tab", "other"
+        } and not re.search(r"\b(start|fight|attack|claim|complete|enter|battle)\b", text, re.I):
+            return 0
+        return None
+
+    if action_type == "start_gathering" or re.search(r"\b(gather|gathering|march|resource node)\b", low):
+        return 0
+    if action_type == "train_troops" or re.search(r"\b(train|training|troops|barracks)\b", low):
+        return 1
+    if action_type == "upgrade_building" or re.search(r"\b(upgrade|building|construction)\b", low):
+        return 2
+    if action_type in {"start_research", "open_academy"} or re.search(r"\b(research|academy|technology|tech)\b", low):
+        return 3
+    if _QUEST_TERMS.search(text):
+        return 5
+    if action_type == "claim_reward" and _RESOURCE_TERMS.search(text):
+        return 4
+    if action_type in {"open_menu", "select_tab", "inspect_screen", "other"}:
+        if _EXIT_TERMS.search(text):
+            return 0
+        # A navigation command must identify which authorized task it supports.
+        if re.search(r"\b(map|march|gather|resource node)\b", low):
+            return 0
+        if re.search(r"\b(barracks|train|troop)\b", low):
+            return 1
+        if re.search(r"\b(building|upgrade|construction)\b", low):
+            return 2
+        if re.search(r"\b(academy|research|technology|tech)\b", low):
+            return 3
+        if re.search(r"\b(city resource|resource bubble|harvest|collect resource)\b", low):
+            return 4
+        if _QUEST_TERMS.search(text):
+            return 5
+    return None
+
+
+def order_task_commands(commands: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Drop unapproved activities and stably sort eligible commands by priority."""
+    indexed = [(action_priority(command), i, command) for i, command in enumerate(commands)]
+    return [command for rank, _, command in sorted(
+        (entry for entry in indexed if entry[0] is not None),
+        key=lambda entry: (entry[0], entry[1]),
+    )]
 
 
 def event_action_rejection(command: dict[str, Any], advice: dict[str, Any]) -> str | None:
-    """Reject event/battle actions except Path of Vengeance and safe exits."""
-    action_type = str(command.get("action_type") or "").casefold()
-    title_target = " ".join(
-        str(command.get(key) or "") for key in ("title", "target", "action_type")
-    )
-    if _PATH_OF_VENGEANCE.search(title_target):
-        return None
-
+    """Reject event controls except a clearly identified exit action."""
+    text = _text(command)
     screen = str(advice.get("current_screen") or "")
-    mentions_event = bool(_EVENT_TERMS.search(title_target))
-    on_event_screen = bool(_EVENT_SCREEN.search(screen))
-    if not mentions_event and not on_event_screen:
+    action_type = str(command.get("action_type") or "").casefold()
+    if not (_EVENT_TERMS.search(text) or _EVENT_SCREEN.search(screen)):
         return None
-
-    safe_exit = bool(_EXIT_TERMS.search(title_target)) and action_type in {
+    safe_exit = bool(_EXIT_TERMS.search(text)) and action_type in {
         "open_menu", "inspect_screen", "select_tab", "other"
     }
-    if safe_exit and not re.search(r"\b(start|fight|attack|claim|complete|enter|battle)\b", title_target, re.IGNORECASE):
+    if safe_exit and not re.search(r"\b(start|fight|attack|claim|complete|enter|battle)\b", text, re.I):
         return None
-    return "Only Path of Vengeance is allowed; Expedition and other event actions are disabled."
+    return "Events and event actions are outside the six authorized priorities."

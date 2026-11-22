@@ -304,7 +304,7 @@ def run_smart_monitor(
                             and not pending_verification_before_cycle
                             and automation_pause is None
                         ) else []
-                        from .action_policy import event_action_rejection
+                        from .action_policy import action_priority, event_action_rejection, order_task_commands
                         if automation_enabled and pending_verification_before_cycle:
                             print(
                                 "No new input this cycle: Gemini is assessing the previous click first.",
@@ -320,9 +320,18 @@ def run_smart_monitor(
                             )
                             execution_store.resume_automation()
                             automation_pause = None
-                            candidate_commands = raw_commands
+                            candidate_commands = order_task_commands(raw_commands)
+                        else:
+                            candidate_commands = order_task_commands(candidate_commands)
                         sent_action = False
                         for proposed in candidate_commands:
+                            if action_priority(proposed) is None:
+                                print(
+                                    f"Automation skipped '{proposed.get('title', 'untitled command')}': "
+                                    "it is outside the six authorized task priorities.",
+                                    flush=True,
+                                )
+                                continue
                             command_key = (
                                 str(proposed.get("title") or "").strip().casefold(),
                                 str(proposed.get("action_type") or "").strip().casefold(),

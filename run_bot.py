@@ -16,17 +16,17 @@ import os
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Start RoK Governor with a fixed high‑level goal."
+        description="Start RoK Governor with a fixed high-level goal."
     )
     DEFAULT_GOAL = (
-        "Run autonomously in this order: send available marches to gather resources, train troops, "
-        "upgrade buildings, then research technology. Do not play Expedition or any event "
-        "except Path of Vengeance. No real-money purchases."
+        "ONLY perform these tasks in this exact priority order: (1) send available armies to gather, "
+        "(2) train troops, (3) upgrade buildings, (4) research, (5) collect resources from the city, "
+        "(6) complete quests. Do not perform any other activities. No real-money purchases."
     )
     parser.add_argument(
         "--goal",
         default=DEFAULT_GOAL,
-        help="High-level instruction for the bot (default: autonomous growth prioritizing gathering, upgrades, and research; no real-money purchases).",
+        help="High-level instruction for the bot (default: the six authorized tasks in strict priority order).",
     )
     parser.add_argument(
         "--title",
