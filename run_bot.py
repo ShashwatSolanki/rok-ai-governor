@@ -21,12 +21,13 @@ def main() -> None:
     DEFAULT_GOAL = (
         "ONLY perform these tasks in this exact priority order: (1) send available armies to gather, "
         "(2) train troops, (3) upgrade buildings, (4) research, (5) collect resources from the city, "
-        "(6) complete quests. Do not perform any other activities. No real-money purchases."
+        "(6) complete quests, (7) hunt barbarians only when visible AP remains. "
+        "Do not perform any other activities. No real-money purchases."
     )
     parser.add_argument(
         "--goal",
         default=DEFAULT_GOAL,
-        help="High-level instruction for the bot (default: the six authorized tasks in strict priority order).",
+        help="High-level instruction for the bot (default: the seven authorized tasks in strict priority order).",
     )
     parser.add_argument(
         "--title",

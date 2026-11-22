@@ -11,9 +11,10 @@ TASK_ORDER = (
     "research",
     "city_resources",
     "quests",
+    "barbarian_hunt",
 )
 
-_EVENT_TERMS = re.compile(r"\b(event|expedition|battle|battlefield|arena|path of vengeance)\b", re.I)
+_EVENT_TERMS = re.compile(r"\b(event|expedition|battlefield|arena|path of vengeance)\b", re.I)
 _EVENT_SCREEN = re.compile(
     r"\b(expedition|event\s+(?:center|screen|menu|interface|page|tab)|"
     r"(?:center|screen|menu|interface|page|tab)\s+(?:of\s+)?events)\b", re.I
@@ -21,6 +22,13 @@ _EVENT_SCREEN = re.compile(
 _EXIT_TERMS = re.compile(r"\b(back|close|exit|home|return|dismiss)\b", re.I)
 _RESOURCE_TERMS = re.compile(r"\b(resource|resources|bubble|harvest|collect|food|wood|stone|gold)\b", re.I)
 _QUEST_TERMS = re.compile(r"\b(quest|quests|mission|missions|objective|objectives)\b", re.I)
+_BARBARIAN_TERMS = re.compile(r"\b(barbarian|barbarians)\b", re.I)
+_AP_AVAILABLE = re.compile(
+    r"\b(?:AP|action points?)\b\s*(?:(?:is|:|=)\s*)?[1-9]\d*(?:\s*/\s*[1-9]\d*)?|"
+    r"\b(?:AP|action points?)\b\s+(?:available|remaining|left|positive|sufficient)\b(?!\s*[:=]?\s*0\b)|"
+    r"\b(?:available|remaining|left|positive|sufficient)\s+(?:AP|action points?)\b(?!\s*[:=]?\s*0\b)",
+    re.I,
+)
 
 
 def _text(command: dict[str, Any]) -> str:
@@ -34,7 +42,8 @@ def action_priority(command: dict[str, Any]) -> int | None:
     """Return task rank (0 is highest); None means outside the user's task list.
 
     Navigation is allowed only when its stated destination clearly serves one of
-    the six tasks, or when it exits an event screen.
+    the seven tasks, or when it exits an event screen. Barbarian hunts require
+    AP availability to be stated in the command's visible-screen preconditions.
     """
     action_type = str(command.get("action_type") or "").casefold()
     text = _text(command)
@@ -45,6 +54,15 @@ def action_priority(command: dict[str, Any]) -> int | None:
         } and not re.search(r"\b(start|fight|attack|claim|complete|enter|battle)\b", text, re.I):
             return 0
         return None
+
+    if _BARBARIAN_TERMS.search(text):
+        preconditions = command.get("preconditions") or []
+        if isinstance(preconditions, str):
+            preconditions = [preconditions]
+        evidence = " ".join(str(item) for item in preconditions)
+        if not _AP_AVAILABLE.search(evidence):
+            return None
+        return 6
 
     if action_type == "start_gathering" or re.search(r"\b(gather|gathering|march|resource node)\b", low):
         return 0
@@ -98,4 +116,4 @@ def event_action_rejection(command: dict[str, Any], advice: dict[str, Any]) -> s
     }
     if safe_exit and not re.search(r"\b(start|fight|attack|claim|complete|enter|battle)\b", text, re.I):
         return None
-    return "Events and event actions are outside the six authorized priorities."
+    return "Events and event actions are outside the seven authorized priorities."

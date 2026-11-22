@@ -4,7 +4,7 @@ from rok_governor.action_policy import action_priority, order_task_commands
 
 
 class ActionPolicyTests(unittest.TestCase):
-    def test_commands_are_sorted_by_the_six_task_priorities(self):
+    def test_commands_are_sorted_by_the_seven_task_priorities(self):
         commands = [
             {"action_type": "claim_reward", "title": "Complete daily quest"},
             {"action_type": "upgrade_building", "title": "Upgrade Farm"},
@@ -12,16 +12,35 @@ class ActionPolicyTests(unittest.TestCase):
             {"action_type": "start_research", "title": "Research Technology"},
             {"action_type": "train_troops", "title": "Train troops"},
             {"action_type": "start_gathering", "title": "Send march to gather"},
+            {"action_type": "other", "title": "Hunt barbarians", "preconditions": ["Screenshot shows AP: 25/100"]},
         ]
         self.assertEqual(
             [command["action_type"] for command in order_task_commands(commands)],
-            ["start_gathering", "train_troops", "upgrade_building", "start_research", "claim_reward", "claim_reward"],
+            ["start_gathering", "train_troops", "upgrade_building", "start_research", "claim_reward", "claim_reward", "other"],
         )
 
     def test_rejects_unlisted_activities_and_unrelated_rewards(self):
         self.assertIsNone(action_priority({"action_type": "manage_commander", "title": "Manage commander"}))
         self.assertIsNone(action_priority({"action_type": "claim_reward", "title": "Claim VIP reward"}))
         self.assertIsNone(action_priority({"action_type": "other", "title": "Start Path of Vengeance"}))
+
+    def test_barbarian_hunts_require_visible_positive_ap(self):
+        self.assertEqual(
+            action_priority({
+                "action_type": "other",
+                "title": "Hunt barbarians",
+                "preconditions": ["AP remaining: 30"],
+            }),
+            6,
+        )
+        self.assertIsNone(action_priority({
+            "action_type": "other", "title": "Hunt barbarians",
+            "preconditions": ["AP: 0/100"],
+        }))
+        self.assertIsNone(action_priority({
+            "action_type": "other", "title": "Hunt barbarians in event",
+            "preconditions": ["AP: 30/100"],
+        }))
 
     def test_navigation_only_passes_when_it_supports_a_listed_task(self):
         self.assertEqual(action_priority({"action_type": "open_menu", "title": "Open map to gather"}), 0)

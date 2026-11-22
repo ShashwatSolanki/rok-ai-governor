@@ -2,7 +2,7 @@
 
 A Gemini-powered secondary-account governor for Rise of Kingdoms. It observes the selected PC game window, reasons about the visible account state, and can dispatch a tightly bounded set of low-risk clicks. Background input is the default best-effort transport; foreground input is an explicit opt-in for clients that accept synthesized system mouse events. It does not inspect game memory, modify the client, or connect to game services.
 
-> **Automation scope:** unattended input is restricted to the user's ordered task list: gathering marches, troop training, building upgrades, research, city resource collection, then quests. A local allow-list filters and sorts Gemini proposals before dispatch; each action still requires visible coordinates, preconditions, a confidence threshold, freshness checks, idempotency, and an execution audit. Other activities and real-money purchases are not automated. Check the game's current terms before using third-party tools alongside your account.
+> **Automation scope:** unattended input is restricted to the user's ordered task list: gathering marches, troop training, building upgrades, research, city resource collection, quests, then barbarian hunts when visible AP remains. A local allow-list filters and sorts Gemini proposals before dispatch; each action still requires visible coordinates, preconditions, a confidence threshold, freshness checks, idempotency, and an execution audit. Other activities and real-money purchases are not automated. Check the game's current terms before using third-party tools alongside your account.
 
 ## Current capabilities
 
@@ -60,7 +60,7 @@ Gemini requests send the selected screenshot and a small summary of local OCR ou
 
 All configured keys are Google Gemini keys; no other AI providers are used. Gemini rate limits are project-based, not per key, so keys from the same Google AI Studio project share quota. Use keys from separate projects if you need independent project quotas, and follow Google's terms and quotas. [Gemini rate limits](https://ai.google.dev/gemini-api/docs/rate-limits).
 
-The governor enforces this exact task priority: **(1) send armies to gather, (2) train troops, (3) upgrade buildings, (4) research, (5) collect city resources, (6) complete quests.** Other activities, including all events and Expedition, are filtered out. When an event screen is open, the governor may use a clearly visible exit or return-to-city control.
+The governor enforces this exact task priority: **(1) send armies to gather, (2) train troops, (3) upgrade buildings, (4) research, (5) collect city resources, (6) complete quests, (7) hunt barbarians when AP remains.** Barbarian hunts require visible evidence of positive AP. Other activities, including all events and Expedition, are filtered out. When an event screen is open, the governor may use a clearly visible exit or return-to-city control.
 
 ## Usage
 
