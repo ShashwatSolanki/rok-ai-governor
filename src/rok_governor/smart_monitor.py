@@ -586,7 +586,6 @@ def run_resilient_monitor(
                 observation_count=previous_health.get("observations_this_session", 0),
                 automation_enabled=automation_enabled,
                 input_mode=input_mode,
-                fast=fast,
             )
             print("\\nGovernor stopped by user.", flush=True)
             return 0
@@ -609,7 +608,6 @@ def run_resilient_monitor(
                 observation_count=previous_health.get("observations_this_session", 0),
                 automation_enabled=automation_enabled,
                 input_mode=input_mode,
-                fast=fast,
             )
             print(
                 f"Monitor cycle failed ({type(exc).__name__}: {exc}). "
