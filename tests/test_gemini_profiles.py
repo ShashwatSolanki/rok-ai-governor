@@ -149,7 +149,7 @@ class GeminiProfileTests(unittest.TestCase):
 
         compressed = _prepare_provider_image(source.getvalue())
 
-        self.assertLessEqual(len(compressed), 96 * 1024)
+        self.assertLessEqual(len(compressed), 64 * 1024)
 
 
 if __name__ == "__main__":
