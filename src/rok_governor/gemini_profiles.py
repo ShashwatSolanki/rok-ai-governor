@@ -166,7 +166,7 @@ def request_profile(profile: GeminiProfile, prompt: str, image_bytes: bytes, *, 
     return type("ProviderResponse", (), {"text": payload["choices"][0]["message"]["content"]})()
 
 
-def _prepare_provider_image(image_bytes: bytes, *, max_bytes: int = 8 * 1024 * 1024) -> bytes:
+def _prepare_provider_image(image_bytes: bytes, *, max_bytes: int = 3 * 1024 * 1024) -> bytes:
     """Convert screenshots to a compact JPEG below provider request limits."""
     from PIL import Image
 
