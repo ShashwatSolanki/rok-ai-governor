@@ -141,7 +141,8 @@ def request_profile(profile: GeminiProfile, prompt: str, image_bytes: bytes, *, 
         from google import genai
         from google.genai import types
         client = genai.Client(api_key=profile.api_key, http_options=types.HttpOptions(
-            timeout=timeout_ms, retry_options=types.HttpRetryOptions(attempts=1)))
+            api_version="v1beta", timeout=timeout_ms,
+            retry_options=types.HttpRetryOptions(attempts=1)))
         return client.models.generate_content(model=profile.model, contents=[
             prompt, types.Part.from_bytes(data=image_bytes, mime_type="image/png")],
             config=types.GenerateContentConfig(response_mime_type="application/json",
@@ -220,7 +221,8 @@ def generate_with_profiles(
             )
             print(
                 f"[WARN] {profile.provider} profile {profile.name} with model {profile.model} "
-                "was unavailable; trying the next configured profile.",
+                f"was unavailable ({_safe_error(error, profile.api_key)}); "
+                "trying the next configured profile.",
                 flush=True,
             )
     if not candidates:
